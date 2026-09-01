@@ -39,6 +39,47 @@ data class MotionEventEntity(
     val dateKey: String
 )
 
+@Entity(tableName = "motion_route_sessions")
+data class MotionRouteSessionEntity(
+    @PrimaryKey
+    val sessionId: String,
+    val dateKey: String,
+    val activityCategory: String,
+    val startTimeMs: Long,
+    val endTimeMs: Long?,
+    val startLatitude: Double?,
+    val startLongitude: Double?,
+    val startAccuracyMeters: Float?,
+    val startTimestamp: Long?,
+    val endLatitude: Double?,
+    val endLongitude: Double?,
+    val endAccuracyMeters: Float?,
+    val endTimestamp: Long?,
+    val snapshotDistanceMeters: Double?,
+    val rainContext: String = "UNAVAILABLE",
+    val lastUpdatedMs: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "motion_route_events")
+data class RouteEventEntity(
+    @PrimaryKey
+    val eventId: String,
+    val sessionId: String,
+    val dateKey: String,
+    val timestamp: Long,
+    val latitude: Double?,
+    val longitude: Double?,
+    val accuracyMeters: Float?,
+    val previousSpeedKmH: Float?,
+    val currentSpeedKmH: Float?,
+    val speedDeltaKmH: Float?,
+    val headingBeforeDeg: Float?,
+    val headingAfterDeg: Float?,
+    val motionType: String,
+    val classification: String,
+    val confidence: String
+)
+
 @Dao
 interface MotionDao {
 
@@ -63,9 +104,33 @@ interface MotionDao {
     @Query("SELECT * FROM motion_events WHERE dateKey = :dateKey ORDER BY startTimeMs DESC LIMIT 50")
     suspend fun getEventsForDate(dateKey: String): List<MotionEventEntity>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRouteSession(session: MotionRouteSessionEntity)
+
+    @Query("SELECT * FROM motion_route_sessions WHERE dateKey = :dateKey ORDER BY startTimeMs DESC")
+    suspend fun getRouteSessionsForDate(dateKey: String): List<MotionRouteSessionEntity>
+
+    @Query("SELECT * FROM motion_route_sessions WHERE dateKey = :dateKey ORDER BY startTimeMs DESC")
+    fun observeRouteSessionsForDate(dateKey: String): Flow<List<MotionRouteSessionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRouteEvent(event: RouteEventEntity)
+
+    @Query("SELECT * FROM motion_route_events WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    suspend fun getRouteEventsForSession(sessionId: String): List<RouteEventEntity>
+
+    @Query("SELECT * FROM motion_route_events WHERE dateKey = :dateKey ORDER BY timestamp ASC")
+    suspend fun getRouteEventsForDate(dateKey: String): List<RouteEventEntity>
+
     @Query("DELETE FROM daily_motion_summaries WHERE dateKey NOT IN (SELECT dateKey FROM daily_motion_summaries ORDER BY dateKey DESC LIMIT 7)")
     suspend fun pruneOldSummaries()
 
     @Query("DELETE FROM motion_events WHERE dateKey NOT IN (SELECT dateKey FROM daily_motion_summaries ORDER BY dateKey DESC LIMIT 7)")
     suspend fun pruneOldEvents()
+
+    @Query("DELETE FROM motion_route_sessions WHERE dateKey NOT IN (SELECT dateKey FROM daily_motion_summaries ORDER BY dateKey DESC LIMIT 7)")
+    suspend fun pruneOldRouteSessions()
+
+    @Query("DELETE FROM motion_route_events WHERE dateKey NOT IN (SELECT dateKey FROM daily_motion_summaries ORDER BY dateKey DESC LIMIT 7)")
+    suspend fun pruneOldRouteEvents()
 }

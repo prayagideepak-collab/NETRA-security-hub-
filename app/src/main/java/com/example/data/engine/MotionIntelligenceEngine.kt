@@ -2,10 +2,7 @@ package com.example.data.engine
 
 import android.content.Context
 import android.hardware.Sensor
-import com.example.data.db.DailyMotionSummaryEntity
-import com.example.data.db.MotionDao
-import com.example.data.db.MotionEventEntity
-import com.example.data.db.NetraDatabase
+import com.example.data.db.*
 import com.example.data.model.*
 import com.example.data.repository.SettingsRepository
 import kotlinx.coroutines.*
@@ -22,7 +19,8 @@ import kotlin.math.sqrt
 class MotionIntelligenceEngine(
     private val context: Context,
     private val motionDao: MotionDao = NetraDatabase.getInstance(context).motionDao(),
-    private val settingsRepository: SettingsRepository = SettingsRepository(context)
+    private val settingsRepository: SettingsRepository = SettingsRepository(context),
+    val locationSnapshotProvider: MotionLocationSnapshotProvider = MotionLocationSnapshotProvider(context)
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -49,8 +47,8 @@ class MotionIntelligenceEngine(
     private var currentSpeedKmH: Float = 0f
     private var currentCadence: Int = 0
 
-    // Feature extraction rolling window
-    private val accelHistory = ArrayDeque<FloatArray>(60) // ~3 sec at 50ms interval
+    // Feature extraction rolling window (~1.5s at 50ms interval)
+    private val accelHistory = ArrayDeque<FloatArray>(30)
     private var lastStepDetectorTime = 0L
     private var stepDetectorIntervals = ArrayDeque<Long>(15)
     private var lastHardwareStepCounterVal: Int? = null
@@ -60,8 +58,27 @@ class MotionIntelligenceEngine(
     private var drivingCandidateStartTime = 0L
     private var lastGnssTimestamp = 0L
 
+    // State transition hysteresis
+    private var pendingCategory: MotionCategory = MotionCategory.UNKNOWN
+    private var candidateConsecutiveCount: Int = 0
+
     // Unattended table detection
     private var continuousStationaryStartTime = System.currentTimeMillis()
+
+    // Route Snapshot & Session State
+    private var activeSessionId: String? = null
+    private var activeSessionCategory: MotionCategory? = null
+    private var activeSessionStartTimeMs: Long = 0L
+    private var activeSessionStartLocation: LocationSnapshot? = null
+    private var activeSessionRainContext: RainContext = RainContext.UNAVAILABLE
+    private val activeSessionEvents = mutableListOf<RouteEventRecord>()
+    private val todayRouteSessions = mutableListOf<MotionRouteSession>()
+
+    // Speed-Drop & Orientation Telemetry Fusion
+    private var confirmedPreviousSpeedKmH: Float = 0f
+    private var lastIntermediateSnapshotTimeMs: Long = 0L
+    private var currentHeadingDeg: Float = 0f
+    private var previousHeadingDeg: Float = 0f
 
     // User profile state
     private var userProfile = UserProfile()
@@ -116,6 +133,8 @@ class MotionIntelligenceEngine(
             refreshHistoryDates()
             motionDao.pruneOldSummaries()
             motionDao.pruneOldEvents()
+            motionDao.pruneOldRouteSessions()
+            motionDao.pruneOldRouteEvents()
         }
 
         // 1-second cadence timer for active state accumulation & midnight rollover
@@ -142,6 +161,15 @@ class MotionIntelligenceEngine(
             todayDrivingDistanceM = existing.drivingDistanceMeters
             todayStandingDurationSec = existing.standingDurationSec
         }
+
+        // Load today's route sessions from DB
+        val sessionEntities = motionDao.getRouteSessionsForDate(today)
+        todayRouteSessions.clear()
+        for (se in sessionEntities) {
+            val events = motionDao.getRouteEventsForSession(se.sessionId).map { it.toModel() }
+            todayRouteSessions.add(se.toModel(events))
+        }
+
         updateDashboardState()
     }
 
@@ -178,6 +206,12 @@ class MotionIntelligenceEngine(
                 dataQuality = it.dataQuality,
                 dateKey = it.dateKey
             )
+        }
+
+        val sessionEntities = motionDao.getRouteSessionsForDate(dateKey)
+        val routeSessions = sessionEntities.map { se ->
+            val rEvents = motionDao.getRouteEventsForSession(se.sessionId).map { it.toModel() }
+            se.toModel(rEvents)
         }
 
         if (summary != null) {
@@ -235,14 +269,18 @@ class MotionIntelligenceEngine(
                 targetProgress = targetProgress,
                 isHistorical = true,
                 availableHistoryDates = _availableHistoryDates.value,
-                recentEvents = events
+                recentEvents = events,
+                routeSessions = routeSessions,
+                activeRouteSession = null
             )
         } else {
             _motionState.value = DailyMotionDashboardState(
                 dateKey = dateKey,
                 displayDate = MotionTimeFormatter.parseDateKeyToDisplay(dateKey),
                 isHistorical = true,
-                availableHistoryDates = _availableHistoryDates.value
+                availableHistoryDates = _availableHistoryDates.value,
+                routeSessions = routeSessions,
+                activeRouteSession = null
             )
         }
     }
@@ -259,7 +297,7 @@ class MotionIntelligenceEngine(
                     val y = reading.values[1]
                     val z = reading.values[2]
                     synchronized(accelHistory) {
-                        if (accelHistory.size >= 60) accelHistory.removeFirst()
+                        if (accelHistory.size >= 30) accelHistory.removeFirst()
                         accelHistory.addLast(floatArrayOf(x, y, z))
                     }
                     evaluateMotionClassification(now)
@@ -273,12 +311,26 @@ class MotionIntelligenceEngine(
                     handleHardwareStepCount(reading.values[0].toInt(), now)
                 }
             }
+            "sensor_3", "sensor_4", "sensor_2" -> { // Orientation / Gyroscope / Compass
+                if (reading.values.isNotEmpty()) {
+                    val heading = reading.values[0]
+                    if (heading != currentHeadingDeg) {
+                        previousHeadingDeg = currentHeadingDeg
+                        currentHeadingDeg = heading
+                    }
+                }
+            }
             "gnss_location" -> { // GNSS Location & Speed
                 if (reading.values.size >= 3) {
+                    val lat = reading.values[0].toDouble()
+                    val lng = reading.values[1].toDouble()
                     val speed = reading.values[2] // speed in km/h
+                    val accuracy = if (reading.values.size >= 4) reading.values[3] else null
+
                     currentSpeedKmH = speed
                     lastGnssTimestamp = now
                     evaluateMotionClassification(now)
+                    evaluateSpeedDropEvent(speed, lat, lng, accuracy, now)
                 }
             }
         }
@@ -341,8 +393,7 @@ class MotionIntelligenceEngine(
             }
             val sustainedDrivingDuration = now - drivingCandidateStartTime
             if (sustainedDrivingDuration >= 15000L) { // 15 seconds sustained speed
-                currentCategory = MotionCategory.DRIVING
-                currentConfidence = if (sustainedDrivingDuration >= 30000L) MotionConfidence.HIGH else MotionConfidence.MEDIUM
+                applyCategoryTransition(MotionCategory.DRIVING, if (sustainedDrivingDuration >= 30000L) MotionConfidence.HIGH else MotionConfidence.MEDIUM, now)
                 continuousStationaryStartTime = now
                 updateDashboardState()
                 return
@@ -361,39 +412,213 @@ class MotionIntelligenceEngine(
 
         val isStepFresh = (now - lastStepDetectorTime) <= 3000L
 
-        // 3. Classification Decision Tree
+        // 3. Classification Candidate Evaluation
+        val candidateCategory: MotionCategory
+        val candidateConfidence: MotionConfidence
+
         when {
-            // Running: high variance + cadence >= 135 or variance > 4.5
+            // Running: high variance or high cadence
             (isStepFresh && currentCadence >= 135) || variance >= 4.5f -> {
-                currentCategory = MotionCategory.RUNNING
-                currentConfidence = if (isStepFresh && currentCadence >= 135) MotionConfidence.HIGH else MotionConfidence.MEDIUM
-                continuousStationaryStartTime = now
+                candidateCategory = MotionCategory.RUNNING
+                candidateConfidence = if (isStepFresh && currentCadence >= 135) MotionConfidence.HIGH else MotionConfidence.MEDIUM
             }
-            // Walking: moderate variance + regular step rhythm or variance in walking zone
-            (isStepFresh && currentCadence in 40..134) || (variance in 0.6f..4.4f) -> {
-                currentCategory = MotionCategory.WALKING
-                currentConfidence = if (isStepFresh) MotionConfidence.HIGH else MotionConfidence.MEDIUM
-                continuousStationaryStartTime = now
+            // Walking: moderate variance or cadence in human walking range
+            (isStepFresh && currentCadence in 40..134) || (variance in 0.35f..4.4f) -> {
+                candidateCategory = MotionCategory.WALKING
+                candidateConfidence = if (isStepFresh) MotionConfidence.HIGH else MotionConfidence.MEDIUM
             }
             // Stationary / Standing: very low variance
             variance < 0.35f -> {
-                // If phone is stationary for > 15 min continuously, classify as UNKNOWN/IDLE to avoid inflating standing time
                 val stationaryDuration = now - continuousStationaryStartTime
                 if (stationaryDuration < 900000L) { // Within 15 min of user activity
-                    currentCategory = MotionCategory.STANDING
-                    currentConfidence = MotionConfidence.MEDIUM
+                    candidateCategory = MotionCategory.STANDING
+                    candidateConfidence = MotionConfidence.MEDIUM
                 } else {
-                    currentCategory = MotionCategory.UNKNOWN
-                    currentConfidence = MotionConfidence.LOW
+                    candidateCategory = MotionCategory.UNKNOWN
+                    candidateConfidence = MotionConfidence.LOW
                 }
             }
             else -> {
-                currentCategory = MotionCategory.UNKNOWN
-                currentConfidence = MotionConfidence.LOW
+                candidateCategory = MotionCategory.UNKNOWN
+                candidateConfidence = MotionConfidence.LOW
+            }
+        }
+
+        // Hysteresis & Stability Confirmation to prevent noise flutter
+        if (candidateCategory == currentCategory) {
+            candidateConsecutiveCount = 0
+            currentConfidence = candidateConfidence
+        } else {
+            if (candidateCategory == pendingCategory) {
+                candidateConsecutiveCount++
+                if (candidateConsecutiveCount >= 2 || currentCategory == MotionCategory.UNKNOWN) {
+                    applyCategoryTransition(candidateCategory, candidateConfidence, now)
+                    candidateConsecutiveCount = 0
+                    if (candidateCategory != MotionCategory.STANDING) {
+                        continuousStationaryStartTime = now
+                    }
+                }
+            } else {
+                pendingCategory = candidateCategory
+                candidateConsecutiveCount = 1
             }
         }
 
         updateDashboardState()
+    }
+
+    private fun applyCategoryTransition(newCategory: MotionCategory, confidence: MotionConfidence, now: Long) {
+        val oldCategory = currentCategory
+        currentCategory = newCategory
+        currentConfidence = confidence
+
+        if (oldCategory != newCategory) {
+            // Manage Route Session Lifecycles on transition
+            val wasMoving = oldCategory in listOf(MotionCategory.WALKING, MotionCategory.RUNNING, MotionCategory.DRIVING)
+            val isNowMoving = newCategory in listOf(MotionCategory.WALKING, MotionCategory.RUNNING, MotionCategory.DRIVING)
+
+            if (wasMoving && (!isNowMoving || oldCategory != newCategory)) {
+                finalizeActiveRouteSession(oldCategory, now)
+            }
+            if (isNowMoving && (!wasMoving || oldCategory != newCategory)) {
+                startNewRouteSession(newCategory, now)
+            }
+        }
+    }
+
+    private fun startNewRouteSession(category: MotionCategory, startTimeMs: Long) {
+        val sessionId = UUID.randomUUID().toString()
+        activeSessionId = sessionId
+        activeSessionCategory = category
+        activeSessionStartTimeMs = startTimeMs
+        activeSessionStartLocation = null
+        activeSessionRainContext = RainContext.UNAVAILABLE
+        activeSessionEvents.clear()
+        confirmedPreviousSpeedKmH = currentSpeedKmH
+        lastIntermediateSnapshotTimeMs = startTimeMs
+
+        // Single-shot on-demand location fix for start point
+        scope.launch {
+            val snapshot = locationSnapshotProvider.requestSingleLocationFix(isStartingPoint = true)
+            if (snapshot != null && activeSessionId == sessionId) {
+                activeSessionStartLocation = snapshot
+                val weather = locationSnapshotProvider.fetchWeatherContext(snapshot.latitude, snapshot.longitude)
+                if (activeSessionId == sessionId) {
+                    activeSessionRainContext = weather
+                }
+                updateDashboardState()
+            }
+        }
+    }
+
+    private fun finalizeActiveRouteSession(category: MotionCategory, endTimeMs: Long) {
+        val sessionId = activeSessionId ?: return
+        val startLoc = activeSessionStartLocation
+        val rain = activeSessionRainContext
+        val events = activeSessionEvents.toList()
+        val sTime = activeSessionStartTimeMs
+
+        // Clear active session pointers immediately
+        activeSessionId = null
+        activeSessionCategory = null
+        activeSessionEvents.clear()
+
+        // Single-shot on-demand location fix for end point
+        scope.launch {
+            val endSnapshot = locationSnapshotProvider.requestSingleLocationFix(isEndingPoint = true)
+            val dist = locationSnapshotProvider.calculateGeographicDistanceMeters(startLoc, endSnapshot)
+            val session = MotionRouteSession(
+                sessionId = sessionId,
+                dateKey = activeDateKey,
+                activityCategory = category,
+                startTimeMs = sTime,
+                endTimeMs = endTimeMs,
+                startLocation = startLoc,
+                endLocation = endSnapshot,
+                snapshotDistanceMeters = dist,
+                locationAccuracyMeters = endSnapshot?.accuracyMeters ?: startLoc?.accuracyMeters,
+                rainContext = rain,
+                intermediateEvents = events
+            )
+
+            todayRouteSessions.add(0, session)
+            motionDao.upsertRouteSession(session.toEntity())
+            updateDashboardState()
+        }
+    }
+
+    private fun evaluateSpeedDropEvent(
+        speed: Float,
+        lat: Double,
+        lng: Double,
+        accuracy: Float?,
+        now: Long
+    ) {
+        val prevSpeed = confirmedPreviousSpeedKmH
+        if (speed > prevSpeed || prevSpeed < 15.0f) {
+            confirmedPreviousSpeedKmH = speed
+            return
+        }
+
+        val speedDelta = prevSpeed - speed
+        val isSignificantDrop = speedDelta >= 5.0f || (prevSpeed >= 20.0f && (speedDelta / prevSpeed) >= 0.20f)
+        val hasMinTimeSeparation = (now - lastIntermediateSnapshotTimeMs) >= 20000L
+
+        if (isSignificantDrop && hasMinTimeSeparation) {
+            lastIntermediateSnapshotTimeMs = now
+            confirmedPreviousSpeedKmH = speed
+
+            val headingDiff = abs(currentHeadingDeg - previousHeadingDeg).let { if (it > 180f) 360f - it else it }
+            val classification: RouteEventClassification
+            val confidence: MotionConfidence
+
+            when {
+                speed <= 2.0f -> {
+                    classification = RouteEventClassification.STOP_PAUSE
+                    confidence = MotionConfidence.HIGH
+                }
+                headingDiff >= 35.0f && speed >= 5.0f -> {
+                    classification = RouteEventClassification.TURN
+                    confidence = if (headingDiff >= 50.0f) MotionConfidence.HIGH else MotionConfidence.MEDIUM
+                }
+                headingDiff < 20.0f && speedDelta in 5.0f..18.0f -> {
+                    classification = RouteEventClassification.POSSIBLE_SPEED_BREAKER
+                    confidence = MotionConfidence.MEDIUM
+                }
+                headingDiff < 20.0f && speedDelta > 18.0f -> {
+                    classification = RouteEventClassification.SPEED_REDUCTION
+                    confidence = MotionConfidence.HIGH
+                }
+                else -> {
+                    classification = RouteEventClassification.SIGNIFICANT_SPEED_DROP
+                    confidence = MotionConfidence.MEDIUM
+                }
+            }
+
+            val sId = activeSessionId ?: "session_${activeDateKey}_${now}"
+            val record = RouteEventRecord(
+                eventId = UUID.randomUUID().toString(),
+                sessionId = sId,
+                timestamp = now,
+                latitude = if (lat != 0.0) lat else null,
+                longitude = if (lng != 0.0) lng else null,
+                accuracyMeters = accuracy,
+                previousSpeedKmH = prevSpeed,
+                currentSpeedKmH = speed,
+                speedDeltaKmH = speedDelta,
+                headingBeforeDeg = previousHeadingDeg,
+                headingAfterDeg = currentHeadingDeg,
+                motionType = currentCategory,
+                classification = classification,
+                confidence = confidence
+            )
+
+            activeSessionEvents.add(record)
+            scope.launch {
+                motionDao.insertRouteEvent(record.toEntity(activeDateKey))
+                updateDashboardState()
+            }
+        }
     }
 
     private fun tickOneSecond() {
@@ -449,9 +674,15 @@ class MotionIntelligenceEngine(
             todayStandingDurationSec = 0L
             continuousStationaryStartTime = System.currentTimeMillis()
 
+            todayRouteSessions.clear()
+            activeSessionId = null
+            activeSessionEvents.clear()
+
             refreshHistoryDates()
             motionDao.pruneOldSummaries()
             motionDao.pruneOldEvents()
+            motionDao.pruneOldRouteSessions()
+            motionDao.pruneOldRouteEvents()
             updateDashboardState()
         }
     }
@@ -506,6 +737,22 @@ class MotionIntelligenceEngine(
         val target = ActivityTargetEngine.determineTarget(userProfile, customStepTarget, customStandingTargetSec)
         val targetProgress = ActivityTargetEngine.calculateProgress(target, totalSteps, todayStandingDurationSec)
 
+        val activeSession = if (activeSessionId != null && activeSessionCategory != null) {
+            MotionRouteSession(
+                sessionId = activeSessionId!!,
+                dateKey = activeDateKey,
+                activityCategory = activeSessionCategory!!,
+                startTimeMs = activeSessionStartTimeMs,
+                endTimeMs = null,
+                startLocation = activeSessionStartLocation,
+                endLocation = null,
+                snapshotDistanceMeters = null,
+                locationAccuracyMeters = activeSessionStartLocation?.accuracyMeters,
+                rainContext = activeSessionRainContext,
+                intermediateEvents = activeSessionEvents.toList()
+            )
+        } else null
+
         val newState = DailyMotionDashboardState(
             dateKey = activeDateKey,
             displayDate = MotionTimeFormatter.formatDisplayDate(System.currentTimeMillis()),
@@ -553,9 +800,108 @@ class MotionIntelligenceEngine(
             targetProgress = targetProgress,
             isHistorical = false,
             availableHistoryDates = _availableHistoryDates.value,
+            routeSessions = todayRouteSessions.toList(),
+            activeRouteSession = activeSession,
             lastUpdatedTimestamp = System.currentTimeMillis()
         )
 
         _motionState.value = newState
     }
+}
+
+// Mapper extension functions
+fun MotionRouteSessionEntity.toModel(events: List<RouteEventRecord>): MotionRouteSession {
+    val startLoc = if (startLatitude != null && startLongitude != null) {
+        LocationSnapshot(
+            latitude = startLatitude,
+            longitude = startLongitude,
+            accuracyMeters = startAccuracyMeters,
+            timestamp = startTimestamp ?: startTimeMs,
+            isStartingPoint = true
+        )
+    } else null
+
+    val endLoc = if (endLatitude != null && endLongitude != null) {
+        LocationSnapshot(
+            latitude = endLatitude,
+            longitude = endLongitude,
+            accuracyMeters = endAccuracyMeters,
+            timestamp = endTimestamp ?: (endTimeMs ?: startTimeMs),
+            isEndingPoint = true
+        )
+    } else null
+
+    return MotionRouteSession(
+        sessionId = sessionId,
+        dateKey = dateKey,
+        activityCategory = MotionCategory.values().find { it.name == activityCategory } ?: MotionCategory.UNKNOWN,
+        startTimeMs = startTimeMs,
+        endTimeMs = endTimeMs,
+        startLocation = startLoc,
+        endLocation = endLoc,
+        snapshotDistanceMeters = snapshotDistanceMeters,
+        locationAccuracyMeters = endAccuracyMeters ?: startAccuracyMeters,
+        rainContext = RainContext.values().find { it.name == rainContext } ?: RainContext.UNAVAILABLE,
+        intermediateEvents = events
+    )
+}
+
+fun MotionRouteSession.toEntity(): MotionRouteSessionEntity {
+    return MotionRouteSessionEntity(
+        sessionId = sessionId,
+        dateKey = dateKey,
+        activityCategory = activityCategory.name,
+        startTimeMs = startTimeMs,
+        endTimeMs = endTimeMs,
+        startLatitude = startLocation?.latitude,
+        startLongitude = startLocation?.longitude,
+        startAccuracyMeters = startLocation?.accuracyMeters,
+        startTimestamp = startLocation?.timestamp,
+        endLatitude = endLocation?.latitude,
+        endLongitude = endLocation?.longitude,
+        endAccuracyMeters = endLocation?.accuracyMeters,
+        endTimestamp = endLocation?.timestamp,
+        snapshotDistanceMeters = snapshotDistanceMeters,
+        rainContext = rainContext.name,
+        lastUpdatedMs = System.currentTimeMillis()
+    )
+}
+
+fun RouteEventEntity.toModel(): RouteEventRecord {
+    return RouteEventRecord(
+        eventId = eventId,
+        sessionId = sessionId,
+        timestamp = timestamp,
+        latitude = latitude,
+        longitude = longitude,
+        accuracyMeters = accuracyMeters,
+        previousSpeedKmH = previousSpeedKmH,
+        currentSpeedKmH = currentSpeedKmH,
+        speedDeltaKmH = speedDeltaKmH,
+        headingBeforeDeg = headingBeforeDeg,
+        headingAfterDeg = headingAfterDeg,
+        motionType = MotionCategory.values().find { it.name == motionType } ?: MotionCategory.UNKNOWN,
+        classification = RouteEventClassification.values().find { it.name == classification } ?: RouteEventClassification.UNKNOWN_ROUTE_EVENT,
+        confidence = MotionConfidence.values().find { it.name == confidence } ?: MotionConfidence.LOW
+    )
+}
+
+fun RouteEventRecord.toEntity(dateKey: String): RouteEventEntity {
+    return RouteEventEntity(
+        eventId = eventId,
+        sessionId = sessionId,
+        dateKey = dateKey,
+        timestamp = timestamp,
+        latitude = latitude,
+        longitude = longitude,
+        accuracyMeters = accuracyMeters,
+        previousSpeedKmH = previousSpeedKmH,
+        currentSpeedKmH = currentSpeedKmH,
+        speedDeltaKmH = speedDeltaKmH,
+        headingBeforeDeg = headingBeforeDeg,
+        headingAfterDeg = headingAfterDeg,
+        motionType = motionType.name,
+        classification = classification.name,
+        confidence = confidence.name
+    )
 }

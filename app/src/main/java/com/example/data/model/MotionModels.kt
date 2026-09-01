@@ -111,6 +111,61 @@ data class ActivityTargetProgress(
     val ageGroupLabel: String = ""
 )
 
+data class LocationSnapshot(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Float?,
+    val timestamp: Long,
+    val isStartingPoint: Boolean = false,
+    val isEndingPoint: Boolean = false
+)
+
+enum class RouteEventClassification(val displayName: String) {
+    TURN("Turn"),
+    SPEED_REDUCTION("Speed Reduction"),
+    POSSIBLE_SPEED_BREAKER("Possible Speed Breaker"),
+    STOP_PAUSE("Stop / Pause"),
+    SIGNIFICANT_SPEED_DROP("Significant Speed Drop"),
+    UNKNOWN_ROUTE_EVENT("Unknown Route Event")
+}
+
+enum class RainContext(val displayName: String) {
+    RAIN_DETECTED("Rain Detected"),
+    NO_RAIN("No Rain Detected"),
+    UNAVAILABLE("Weather Unavailable")
+}
+
+data class RouteEventRecord(
+    val eventId: String,
+    val sessionId: String,
+    val timestamp: Long,
+    val latitude: Double?,
+    val longitude: Double?,
+    val accuracyMeters: Float?,
+    val previousSpeedKmH: Float?,
+    val currentSpeedKmH: Float?,
+    val speedDeltaKmH: Float?,
+    val headingBeforeDeg: Float?,
+    val headingAfterDeg: Float?,
+    val motionType: MotionCategory,
+    val classification: RouteEventClassification,
+    val confidence: MotionConfidence
+)
+
+data class MotionRouteSession(
+    val sessionId: String,
+    val dateKey: String,
+    val activityCategory: MotionCategory,
+    val startTimeMs: Long,
+    val endTimeMs: Long?,
+    val startLocation: LocationSnapshot?,
+    val endLocation: LocationSnapshot?,
+    val snapshotDistanceMeters: Double?,
+    val locationAccuracyMeters: Float?,
+    val rainContext: RainContext = RainContext.UNAVAILABLE,
+    val intermediateEvents: List<RouteEventRecord> = emptyList()
+)
+
 data class DailyMotionDashboardState(
     val dateKey: String,
     val displayDate: String,
@@ -125,6 +180,8 @@ data class DailyMotionDashboardState(
     val isHistorical: Boolean = false,
     val availableHistoryDates: List<String> = emptyList(),
     val recentEvents: List<MotionEvent> = emptyList(),
+    val routeSessions: List<MotionRouteSession> = emptyList(),
+    val activeRouteSession: MotionRouteSession? = null,
     val lastUpdatedTimestamp: Long = System.currentTimeMillis()
 )
 

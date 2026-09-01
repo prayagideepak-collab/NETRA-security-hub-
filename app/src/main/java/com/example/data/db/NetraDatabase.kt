@@ -14,6 +14,8 @@ import com.example.data.db.SystemAuditDao
 import com.example.data.db.SystemAuditEntity
 import com.example.data.db.DailyMotionSummaryEntity
 import com.example.data.db.MotionEventEntity
+import com.example.data.db.MotionRouteSessionEntity
+import com.example.data.db.RouteEventEntity
 import com.example.data.db.MotionDao
 import com.example.nasre.db.DiagnosticLogEntity
 import com.example.nasre.db.HealthMonitorEntity
@@ -32,9 +34,11 @@ import com.example.nasre.db.RootCauseEntity
         ResourceOptimizerEntity::class,
         RootCauseEntity::class,
         DailyMotionSummaryEntity::class,
-        MotionEventEntity::class
+        MotionEventEntity::class,
+        MotionRouteSessionEntity::class,
+        RouteEventEntity::class
     ], 
-    version = 14, 
+    version = 15, 
     exportSchema = false
 )
 abstract class NetraDatabase : RoomDatabase() {

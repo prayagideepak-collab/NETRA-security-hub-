@@ -62,28 +62,16 @@ fun MotionIntelligenceScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)
     ) {
-        // 1. Title Banner & Live Motion Badge
+        // Top: Motion Header Card & Profile Configuration
         item {
-            MotionHeaderCard(motionState)
-        }
-
-        // 2. User Profile Setup / Summary Card
-        item {
-            UserProfileCard(
+            MotionHeaderCard(
+                state = motionState,
                 userProfile = userProfile,
-                onEditClick = { showProfileDialog = true }
+                onProfileClick = { showProfileDialog = true }
             )
         }
 
-        // 3. Activity Target & Progress Card
-        item {
-            ActivityTargetProgressCard(
-                progress = motionState.targetProgress,
-                onConfigureClick = { showProfileDialog = true }
-            )
-        }
-
-        // 4. 7-Day History Date Selector
+        // 7-Day History Date Selector
         item {
             HistoryDateSelector(
                 selectedDate = selectedDate,
@@ -92,7 +80,7 @@ fun MotionIntelligenceScreen(
             )
         }
 
-        // 5. Historical Banner if viewing past date
+        // Historical Archive Banner if viewing past date
         if (motionState.isHistorical) {
             item {
                 Surface(
@@ -122,29 +110,46 @@ fun MotionIntelligenceScreen(
             }
         }
 
-        // 6. Section: STANDING
+        // 1. Subsection: STANDING
         item {
             StandingStatsCard(standingStats = motionState.standingStats)
         }
 
-        // 7. Section: WALKING
+        // 2. Subsection: WALKING
         item {
-            WalkingStatsCard(walkingStats = motionState.walkingStats)
+            WalkingStatsCard(
+                walkingStats = motionState.walkingStats,
+                routeSessions = motionState.routeSessions,
+                activeSession = motionState.activeRouteSession
+            )
         }
 
-        // 8. Section: RUNNING
+        // 3. Subsection: RUNNING
         item {
             RunningStatsCard(runningStats = motionState.runningStats)
         }
 
-        // 9. Section: DRIVING
+        // 4. Subsection: DRIVING
         item {
-            DrivingStatsCard(drivingStats = motionState.drivingStats)
+            DrivingStatsCard(
+                drivingStats = motionState.drivingStats,
+                routeSessions = motionState.routeSessions,
+                activeSession = motionState.activeRouteSession
+            )
         }
 
-        // 10. Section: TOTAL ACTIVITY SUMMARY
+        // At the bottom:
+        // 5. Total Steps, 6. Total Distance, 7. Total Active Time, 8. Total Standing Time
         item {
             TotalActivitySummaryCard(total = motionState.totalActivity)
+        }
+
+        // 9. Daily Targets / Progress
+        item {
+            ActivityTargetProgressCard(
+                progress = motionState.targetProgress,
+                onConfigureClick = { showProfileDialog = true }
+            )
         }
     }
 
@@ -164,7 +169,11 @@ fun MotionIntelligenceScreen(
 }
 
 @Composable
-fun MotionHeaderCard(state: DailyMotionDashboardState) {
+fun MotionHeaderCard(
+    state: DailyMotionDashboardState,
+    userProfile: UserProfile,
+    onProfileClick: () -> Unit
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = BentoCardBg),
         shape = RoundedCornerShape(16.dp),
@@ -179,10 +188,11 @@ fun MotionHeaderCard(state: DailyMotionDashboardState) {
             ) {
                 Column {
                     Text(
-                        text = "Motion Intelligence",
+                        text = "MOTION",
                         style = MaterialTheme.typography.titleMedium,
                         color = BentoTextPrimary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
                     )
                     Text(
                         text = "Date: ${state.displayDate}",
@@ -191,47 +201,62 @@ fun MotionHeaderCard(state: DailyMotionDashboardState) {
                     )
                 }
 
-                Surface(
-                    color = when (state.currentMotionCategory) {
-                        MotionCategory.WALKING, MotionCategory.RUNNING -> BentoGreenPrimary.copy(alpha = 0.2f)
-                        MotionCategory.DRIVING -> BentoYellow.copy(alpha = 0.2f)
-                        MotionCategory.STANDING -> BentoBlue.copy(alpha = 0.2f)
-                        MotionCategory.UNKNOWN -> BentoHeroCardBg
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        when (state.currentMotionCategory) {
-                            MotionCategory.WALKING, MotionCategory.RUNNING -> BentoGreenPrimary
-                            MotionCategory.DRIVING -> BentoYellow
-                            MotionCategory.STANDING -> BentoBlue
-                            MotionCategory.UNKNOWN -> BentoBorder
-                        }
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    when (state.currentMotionCategory) {
-                                        MotionCategory.WALKING, MotionCategory.RUNNING -> BentoGreenPrimary
-                                        MotionCategory.DRIVING -> BentoYellow
-                                        MotionCategory.STANDING -> BentoBlue
-                                        MotionCategory.UNKNOWN -> BentoTextMuted
-                                    }
-                                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = when (state.currentMotionCategory) {
+                            MotionCategory.WALKING, MotionCategory.RUNNING -> BentoGreenPrimary.copy(alpha = 0.2f)
+                            MotionCategory.DRIVING -> BentoYellow.copy(alpha = 0.2f)
+                            MotionCategory.STANDING -> BentoBlue.copy(alpha = 0.2f)
+                            MotionCategory.UNKNOWN -> BentoHeroCardBg
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            when (state.currentMotionCategory) {
+                                MotionCategory.WALKING, MotionCategory.RUNNING -> BentoGreenPrimary
+                                MotionCategory.DRIVING -> BentoYellow
+                                MotionCategory.STANDING -> BentoBlue
+                                MotionCategory.UNKNOWN -> BentoBorder
+                            }
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (state.isHistorical) "Archived" else state.currentMotionCategory.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = BentoTextPrimary,
-                            fontWeight = FontWeight.SemiBold
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when (state.currentMotionCategory) {
+                                            MotionCategory.WALKING, MotionCategory.RUNNING -> BentoGreenPrimary
+                                            MotionCategory.DRIVING -> BentoYellow
+                                            MotionCategory.STANDING -> BentoBlue
+                                            MotionCategory.UNKNOWN -> BentoTextMuted
+                                        }
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (state.isHistorical) "Archived" else state.currentMotionCategory.displayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = BentoTextPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = onProfileClick,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = "User Profile & Biometrics",
+                            tint = if (userProfile.isConfigured) BentoGreenPrimary else BentoTextMuted
                         )
                     }
                 }
@@ -521,7 +546,11 @@ fun StandingStatsCard(standingStats: SubActivityStats) {
 }
 
 @Composable
-fun WalkingStatsCard(walkingStats: SubActivityStats) {
+fun WalkingStatsCard(
+    walkingStats: SubActivityStats,
+    routeSessions: List<MotionRouteSession> = emptyList(),
+    activeSession: MotionRouteSession? = null
+) {
     ActivityCard(
         title = "Walking",
         icon = Icons.Default.DirectionsWalk,
@@ -536,6 +565,76 @@ fun WalkingStatsCard(walkingStats: SubActivityStats) {
         if (walkingStats.cadenceStepsPerMin != null) {
             Spacer(modifier = Modifier.height(6.dp))
             Text("Cadence: ${walkingStats.cadenceStepsPerMin} steps/min", style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary)
+        }
+
+        // Route Snapshots (Walking Start & End Single-Shot Location Fixes)
+        val walkingSessions = routeSessions.filter { it.activityCategory == MotionCategory.WALKING }
+        val currentWalkingSession = if (activeSession?.activityCategory == MotionCategory.WALKING) activeSession else null
+
+        if (currentWalkingSession != null || walkingSessions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Divider(color = BentoBorder.copy(alpha = 0.6f))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("Route Snapshots & Accuracy", style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (currentWalkingSession != null) {
+                Surface(
+                    color = BentoHeroCardBg,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(8.dp).background(BentoGreenPrimary, CircleShape))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Active Session Snapshot", style = MaterialTheme.typography.labelSmall, color = BentoTextPrimary, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val startLoc = currentWalkingSession.startLocation
+                        if (startLoc != null) {
+                            Text("Start Point: %.5f, %.5f (±%.1f m)".format(startLoc.latitude, startLoc.longitude, startLoc.accuracyMeters ?: 0f), style = MaterialTheme.typography.bodySmall, color = BentoTextSecondary, fontSize = 11.sp)
+                        } else {
+                            Text("Start Point: Waiting for GPS fix...", style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 11.sp)
+                        }
+                        if (currentWalkingSession.rainContext != RainContext.UNAVAILABLE) {
+                            Text("Context: ${currentWalkingSession.rainContext.displayName}", style = MaterialTheme.typography.labelSmall, color = BentoBlue, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+
+            walkingSessions.take(2).forEach { session ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    color = BentoHeroCardBg,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Completed Walk (${MotionTimeFormatter.formatDuration(((session.endTimeMs ?: session.startTimeMs) - session.startTimeMs) / 1000L)})", style = MaterialTheme.typography.labelSmall, color = BentoTextPrimary, fontWeight = FontWeight.Medium)
+                            if (session.snapshotDistanceMeters != null) {
+                                Text("Geodetic: %.0f m".format(session.snapshotDistanceMeters), style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        if (session.startLocation != null) {
+                            Text("Start: %.5f, %.5f".format(session.startLocation.latitude, session.startLocation.longitude), style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 10.sp)
+                        }
+                        if (session.endLocation != null) {
+                            Text("End: %.5f, %.5f".format(session.endLocation.latitude, session.endLocation.longitude), style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 10.sp)
+                        }
+                        if (session.locationAccuracyMeters != null) {
+                            Text("Accuracy: ±%.1f m".format(session.locationAccuracyMeters), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                        }
+                        if (session.rainContext != RainContext.UNAVAILABLE) {
+                            Text("Weather: ${session.rainContext.displayName}", style = MaterialTheme.typography.labelSmall, color = BentoBlue, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -561,7 +660,11 @@ fun RunningStatsCard(runningStats: SubActivityStats) {
 }
 
 @Composable
-fun DrivingStatsCard(drivingStats: SubActivityStats) {
+fun DrivingStatsCard(
+    drivingStats: SubActivityStats,
+    routeSessions: List<MotionRouteSession> = emptyList(),
+    activeSession: MotionRouteSession? = null
+) {
     ActivityCard(
         title = "Driving",
         icon = Icons.Default.DirectionsCar,
@@ -571,15 +674,55 @@ fun DrivingStatsCard(drivingStats: SubActivityStats) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(drivingStats.durationSec))
             MetricColumn(label = "Distance", value = MotionTimeFormatter.formatDistance(drivingStats.distanceMeters))
-            MetricColumn(label = "Speed", value = drivingStats.currentSpeedKmH?.let { "%.1f km/h".format(it) } ?: "0.0 km/h")
+            MetricColumn(label = "Speed Evidence", value = drivingStats.currentSpeedKmH?.let { "%.1f km/h".format(it) } ?: "Unavailable")
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Driving classification requires sustained speed ≥ 20.0 km/h (≥ 15s) with accurate GNSS lock.",
+            text = "Driving classification requires sustained GNSS speed ≥ 20.0 km/h for confirmation period.",
             style = MaterialTheme.typography.labelSmall,
             color = BentoTextMuted,
             fontSize = 10.sp
         )
+
+        // Route Events (Smart Speed-Drop Snapshots)
+        val allEvents = buildList {
+            if (activeSession != null && activeSession.activityCategory == MotionCategory.DRIVING) {
+                addAll(activeSession.intermediateEvents)
+            }
+            routeSessions.filter { it.activityCategory == MotionCategory.DRIVING }.forEach {
+                addAll(it.intermediateEvents)
+            }
+        }.take(3)
+
+        if (allEvents.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Divider(color = BentoBorder.copy(alpha = 0.6f))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Route Events & Speed Drops", style = MaterialTheme.typography.labelSmall, color = BentoPurple, fontWeight = FontWeight.Bold)
+
+            allEvents.forEach { ev ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    color = BentoHeroCardBg,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(ev.classification.displayName, style = MaterialTheme.typography.bodySmall, color = BentoTextPrimary, fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                            Text("Δ -%.1f km/h (from %.1f km/h)".format(ev.speedDeltaKmH, ev.previousSpeedKmH), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                        }
+                        if (ev.latitude != null && ev.longitude != null) {
+                            Text("%.4f, %.4f".format(ev.latitude, ev.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextSecondary, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -605,23 +748,23 @@ fun TotalActivitySummaryCard(total: TotalActivityStats) {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Row 1: TOTAL STEPS & TOTAL DISTANCE & TOTAL ACTIVE TIME
+            // 5. Total Steps, 6. Total Distance, 7. Total Active Time, 8. Total Standing Time
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 MetricColumn(label = "TOTAL STEPS", value = total.totalSteps?.toString() ?: "0", isPrimary = true)
                 MetricColumn(label = "TOTAL DISTANCE", value = MotionTimeFormatter.formatDistance(total.totalDistanceMeters), isPrimary = true)
                 MetricColumn(label = "ACTIVE TIME", value = MotionTimeFormatter.formatDuration(total.totalActiveTimeSec), isPrimary = true)
+                MetricColumn(label = "STANDING TIME", value = MotionTimeFormatter.formatDuration(total.standingDurationSec), isPrimary = true)
             }
 
             Spacer(modifier = Modifier.height(14.dp))
             Divider(color = BentoBorder)
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Row 2: WALKING STEPS, RUNNING STEPS, DRIVING STEPS, STANDING DURATION
+            // Activity-attributed steps breakdown
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 MetricColumn(label = "WALKING STEPS", value = total.walkingSteps?.toString() ?: "0")
                 MetricColumn(label = "RUNNING STEPS", value = total.runningSteps?.toString() ?: "0")
-                MetricColumn(label = "DRIVING STEPS", value = "0 steps")
-                MetricColumn(label = "STANDING DURATION", value = MotionTimeFormatter.formatDuration(total.standingDurationSec))
+                MetricColumn(label = "DRIVING STEPS", value = "0 (Excluded)")
             }
         }
     }

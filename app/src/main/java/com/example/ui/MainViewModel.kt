@@ -707,6 +707,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Observe motionDashboardState to update notification bar from central source of truth
+        viewModelScope.launch {
+            motionDashboardState.collect { motionState ->
+                notificationManager.updateMotionNotification(motionState)
+            }
+        }
+
         // Observe fusionState & thermalThresholdC for detailed critical thermal monitoring and alerts
         viewModelScope.launch {
             combine(fusionState.sample(1000L), thermalThresholdC) { state, threshold ->
