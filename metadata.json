@@ -1,0 +1,6 @@
+{
+  "name": "Netra Sensor Hub",
+  "description": "Real-time sensor telemetry and Vico chart dashboard",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

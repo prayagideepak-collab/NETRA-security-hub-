@@ -1,0 +1,74 @@
+name: Netra Security Hub CI & Continuous Delivery
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate_and_build:
+    name: Build, Test & Validate Continuous Delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Authoritative Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Validate Gradle Wrapper & Dependencies
+        run: ./gradlew --version
+
+      - name: Run Unit & Intelligence Engine Tests
+        id: unit_tests
+        run: |
+          echo "STATUS: Running testDebugUnitTest..."
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Assemble Debug APK
+        id: assemble_apk
+        run: |
+          echo "STATUS: Assembling Debug APK..."
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+
+      - name: Upload Debug APK Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netra-security-hub-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
+
+      - name: Delivery Summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "::notice title=Netra Sync & Delivery::BUILD_SUCCESS - Authoritative state verified and ready for Studio deployment."
+          else
+            echo "::error title=Netra Sync & Delivery::BUILD_FAILED - Automated verification failed. Inspect test and build logs."
+          fi

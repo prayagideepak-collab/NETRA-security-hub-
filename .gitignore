@@ -1,0 +1,21 @@
+# Android & Gradle Build Artifacts
+.gradle/
+build/
+app/build/
+.build-outputs/
+.kotlin/
+captures/
+
+# Local configuration and credentials
+local.properties
+.env
+debug.keystore
+debug.keystore.base64
+*.jks
+*.keystore
+
+# IDE and OS files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
