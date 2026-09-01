@@ -114,25 +114,23 @@ data class ActivityTargetProgress(
 data class LocationSnapshot(
     val latitude: Double,
     val longitude: Double,
-    val accuracyMeters: Float?,
-    val timestamp: Long,
+    val accuracyMeters: Float? = null,
+    val timestamp: Long = System.currentTimeMillis(),
     val isStartingPoint: Boolean = false,
     val isEndingPoint: Boolean = false
 )
 
 enum class RouteEventClassification(val displayName: String) {
-    TURN("Turn"),
+    MOTION_STARTED("Motion Started"),
+    TURN("Direction Change / Turn"),
     SPEED_REDUCTION("Speed Reduction"),
     POSSIBLE_SPEED_BREAKER("Possible Speed Breaker"),
     STOP_PAUSE("Stop / Pause"),
     SIGNIFICANT_SPEED_DROP("Significant Speed Drop"),
-    UNKNOWN_ROUTE_EVENT("Unknown Route Event")
-}
-
-enum class RainContext(val displayName: String) {
-    RAIN_DETECTED("Rain Detected"),
-    NO_RAIN("No Rain Detected"),
-    UNAVAILABLE("Weather Unavailable")
+    DIRECTION_CHANGE("Direction Change"),
+    MOTION_STATE_CHANGED("Motion State Changed"),
+    MOTION_ENDED("Motion Ended"),
+    UNKNOWN_ROUTE_EVENT("Route Snapshot")
 }
 
 data class RouteEventRecord(
@@ -161,8 +159,8 @@ data class MotionRouteSession(
     val startLocation: LocationSnapshot?,
     val endLocation: LocationSnapshot?,
     val snapshotDistanceMeters: Double?,
+    val isCumulativeDistance: Boolean = false,
     val locationAccuracyMeters: Float?,
-    val rainContext: RainContext = RainContext.UNAVAILABLE,
     val intermediateEvents: List<RouteEventRecord> = emptyList()
 )
 

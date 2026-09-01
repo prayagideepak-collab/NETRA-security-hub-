@@ -633,9 +633,6 @@ fun WalkingStatsCard(
                         } else {
                             Text("Start Point: Location unavailable for this activity", style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 11.sp)
                         }
-                        if (currentWalkingSession.rainContext != RainContext.UNAVAILABLE) {
-                            Text("Context: ${currentWalkingSession.rainContext.displayName}", style = MaterialTheme.typography.labelSmall, color = BentoBlue, fontSize = 11.sp)
-                        }
                     }
                 }
             }
@@ -651,7 +648,8 @@ fun WalkingStatsCard(
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Completed Walk (${MotionTimeFormatter.formatDuration(((session.endTimeMs ?: session.startTimeMs) - session.startTimeMs) / 1000L)})", style = MaterialTheme.typography.labelSmall, color = BentoTextPrimary, fontWeight = FontWeight.Medium)
                             if (session.snapshotDistanceMeters != null) {
-                                Text("Geodetic: %.0f m".format(session.snapshotDistanceMeters), style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
+                                val distLabel = if (session.isCumulativeDistance) "Route Distance" else "Geodetic"
+                                Text("$distLabel: %.0f m".format(session.snapshotDistanceMeters), style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
                             } else {
                                 Text("Distance unavailable", style = MaterialTheme.typography.labelSmall, color = BentoTextMuted)
                             }
@@ -667,9 +665,6 @@ fun WalkingStatsCard(
                         }
                         if (session.locationAccuracyMeters != null) {
                             Text("Accuracy: ±%.1f m".format(session.locationAccuracyMeters), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
-                        }
-                        if (session.rainContext != RainContext.UNAVAILABLE) {
-                            Text("Weather: ${session.rainContext.displayName}", style = MaterialTheme.typography.labelSmall, color = BentoBlue, fontSize = 10.sp)
                         }
                     }
                 }

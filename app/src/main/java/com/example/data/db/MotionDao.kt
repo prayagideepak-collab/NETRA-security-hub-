@@ -56,7 +56,7 @@ data class MotionRouteSessionEntity(
     val endAccuracyMeters: Float?,
     val endTimestamp: Long?,
     val snapshotDistanceMeters: Double?,
-    val rainContext: String = "UNAVAILABLE",
+    val isCumulativeDistance: Boolean = false,
     val lastUpdatedMs: Long = System.currentTimeMillis()
 )
 
@@ -133,4 +133,7 @@ interface MotionDao {
 
     @Query("DELETE FROM motion_route_events WHERE dateKey NOT IN (SELECT dateKey FROM daily_motion_summaries ORDER BY dateKey DESC LIMIT 7)")
     suspend fun pruneOldRouteEvents()
+
+    @Query("DELETE FROM motion_route_events WHERE sessionId NOT IN (SELECT sessionId FROM motion_route_sessions)")
+    suspend fun pruneOrphanRouteEvents()
 }

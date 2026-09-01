@@ -12,6 +12,40 @@ enum class SensorCategory(val displayName: String) {
     LOCATION("Location & GNSS")
 }
 
+object SensorTypeConstants {
+    const val ACCELEROMETER = "ACCELEROMETER"
+    const val GYROSCOPE = "GYROSCOPE"
+    const val MAGNETIC_FIELD = "MAGNETIC_FIELD"
+    const val LIGHT = "LIGHT"
+    const val PROXIMITY = "PROXIMITY"
+    const val STEP_DETECTOR = "STEP_DETECTOR"
+    const val STEP_COUNTER = "STEP_COUNTER"
+    const val LOCATION = "LOCATION"
+    const val ORIENTATION = "ORIENTATION"
+    const val ROTATION_VECTOR = "ROTATION_VECTOR"
+    const val AMBIENT_TEMPERATURE = "AMBIENT_TEMPERATURE"
+    const val UNKNOWN = "UNKNOWN"
+
+    fun normalizeSensorType(sensorId: String, name: String = ""): String {
+        val idLower = sensorId.lowercase()
+        val nameLower = name.lowercase()
+        return when {
+            idLower.contains("accel") || idLower == "sensor_1" || idLower.startsWith("sensor_1_") || nameLower.contains("accel") -> ACCELEROMETER
+            idLower.contains("gyro") || idLower == "sensor_4" || idLower.startsWith("sensor_4_") || nameLower.contains("gyro") -> GYROSCOPE
+            idLower.contains("mag") || idLower == "sensor_2" || idLower.startsWith("sensor_2_") || nameLower.contains("mag") || nameLower.contains("compass") -> MAGNETIC_FIELD
+            idLower.contains("step_det") || idLower == "sensor_18" || idLower.startsWith("sensor_18_") || nameLower.contains("step detector") -> STEP_DETECTOR
+            idLower.contains("step_count") || idLower == "sensor_19" || idLower.startsWith("sensor_19_") || nameLower.contains("step counter") || nameLower.contains("pedometer") -> STEP_COUNTER
+            idLower.contains("light") || idLower == "sensor_5" || idLower.startsWith("sensor_5_") || nameLower.contains("light") -> LIGHT
+            idLower.contains("prox") || idLower == "sensor_8" || idLower.startsWith("sensor_8_") || nameLower.contains("proximity") -> PROXIMITY
+            idLower.contains("orient") || idLower == "sensor_3" || idLower.startsWith("sensor_3_") || nameLower.contains("orientation") -> ORIENTATION
+            idLower.contains("rotation") || idLower == "sensor_11" || idLower.startsWith("sensor_11_") || nameLower.contains("rotation vector") -> ROTATION_VECTOR
+            idLower.contains("temp") || idLower == "sensor_13" || idLower == "sensor_7" || nameLower.contains("temperature") -> AMBIENT_TEMPERATURE
+            idLower.contains("location") || idLower == "gnss_location" -> LOCATION
+            else -> sensorId
+        }
+    }
+}
+
 data class SensorCapabilityInfo(
     val id: String,
     val name: String,

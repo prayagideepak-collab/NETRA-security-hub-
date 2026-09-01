@@ -7,6 +7,7 @@ import com.example.data.db.DailyMotionSummaryEntity
 import com.example.data.db.NetraDatabase
 import com.example.data.engine.ActivityTargetEngine
 import com.example.data.engine.MotionIntelligenceEngine
+import com.example.data.engine.MotionLocationSnapshotProvider
 import com.example.data.model.*
 import com.example.util.NetraNotificationManager
 import kotlinx.coroutines.runBlocking
@@ -315,7 +316,7 @@ class NetraMotionIntelligenceTest {
                     endAccuracyMeters = 6f,
                     endTimestamp = 1001000L,
                     snapshotDistanceMeters = 1200.0,
-                    rainContext = "NO_RAIN",
+                    isCumulativeDistance = true,
                     lastUpdatedMs = System.currentTimeMillis()
                 )
             )
@@ -334,7 +335,7 @@ class NetraMotionIntelligenceTest {
                     headingBeforeDeg = 90f,
                     headingAfterDeg = 150f,
                     motionType = "DRIVING",
-                    classification = "TURN_DETECTED",
+                    classification = "TURN",
                     confidence = "HIGH"
                 )
             )
@@ -352,5 +353,44 @@ class NetraMotionIntelligenceTest {
         val recentEvents = dao.getRouteEventsForDate("2026-08-08")
         assertEquals(1, recentSessions.size)
         assertEquals(1, recentEvents.size)
+    }
+
+    @Test
+    fun testCumulativeRouteDistanceCalculation() {
+        val provider = MotionLocationSnapshotProvider(context)
+        val start = LocationSnapshot(latitude = 25.4300, longitude = 81.8400, timestamp = 1000L)
+        val end = LocationSnapshot(latitude = 25.4500, longitude = 81.8400, timestamp = 3000L)
+        val intermediateEvent = RouteEventRecord(
+            eventId = "ev1",
+            sessionId = "s1",
+            timestamp = 2000L,
+            latitude = 25.4400,
+            longitude = 81.8500,
+            accuracyMeters = 5f,
+            previousSpeedKmH = 30f,
+            currentSpeedKmH = 15f,
+            speedDeltaKmH = 15f,
+            headingBeforeDeg = null,
+            headingAfterDeg = null,
+            motionType = MotionCategory.DRIVING,
+            classification = RouteEventClassification.SIGNIFICANT_SPEED_DROP,
+            confidence = MotionConfidence.MEDIUM
+        )
+
+        val straightLineDist = provider.calculateGeographicDistanceMeters(start, end)
+        val cumulativeDist = provider.calculateCumulativeRouteDistanceMeters(start, listOf(intermediateEvent), end)
+
+        assertNotNull(straightLineDist)
+        assertNotNull(cumulativeDist)
+        assertTrue("Cumulative distance via waypoint must be greater than straight-line distance", cumulativeDist!! > straightLineDist!!)
+    }
+
+    @Test
+    fun testSensorTypeNormalization() {
+        assertEquals(SensorTypeConstants.ACCELEROMETER, SensorTypeConstants.normalizeSensorType("sensor_1"))
+        assertEquals(SensorTypeConstants.GYROSCOPE, SensorTypeConstants.normalizeSensorType("sensor_4"))
+        assertEquals(SensorTypeConstants.MAGNETIC_FIELD, SensorTypeConstants.normalizeSensorType("sensor_2"))
+        assertEquals(SensorTypeConstants.STEP_DETECTOR, SensorTypeConstants.normalizeSensorType("sensor_18"))
+        assertEquals(SensorTypeConstants.STEP_COUNTER, SensorTypeConstants.normalizeSensorType("sensor_19"))
     }
 }
