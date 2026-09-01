@@ -34,7 +34,7 @@ import com.example.nasre.db.RootCauseEntity
         DailyMotionSummaryEntity::class,
         MotionEventEntity::class
     ], 
-    version = 13, 
+    version = 14, 
     exportSchema = false
 )
 abstract class NetraDatabase : RoomDatabase() {

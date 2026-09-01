@@ -28,8 +28,10 @@ import com.example.ui.theme.*
 
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
 
 enum class SensorCenterSubTab(val title: String, val icon: ImageVector) {
+    SAFETY_ENGINE("Safety Engine", Icons.Default.Shield),
     LIVE_SENSORS("Live Telemetry", Icons.Default.Sensors),
     MOTION_INTELLIGENCE("Motion & Activity", Icons.Default.DirectionsWalk),
     TAMPER_SHIELD("Tamper Shield", Icons.Default.Security),
@@ -46,7 +48,7 @@ fun SensorCenterContainerScreen(
     fusionState: SensorFusionState,
     riskAnalysis: RiskAnalysisResult,
     viewModel: MainViewModel,
-    initialSubTab: SensorCenterSubTab = SensorCenterSubTab.LIVE_SENSORS
+    initialSubTab: SensorCenterSubTab = SensorCenterSubTab.SAFETY_ENGINE
 ) {
     var selectedSubTab by remember { mutableStateOf(initialSubTab) }
 
@@ -97,6 +99,9 @@ fun SensorCenterContainerScreen(
         // Sub-screen Lazy Content
         Box(modifier = Modifier.fillMaxSize().weight(1f)) {
             when (selectedSubTab) {
+                SensorCenterSubTab.SAFETY_ENGINE -> SafetyCenterScreen(
+                    viewModel = viewModel
+                )
                 SensorCenterSubTab.LIVE_SENSORS -> SensorsScreen(
                     capabilities = capabilities,
                     liveReadings = liveReadings,

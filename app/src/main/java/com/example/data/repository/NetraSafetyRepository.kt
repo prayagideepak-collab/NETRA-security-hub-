@@ -35,6 +35,9 @@ class NetraSafetyRepository(private val context: Context) {
     
     val settingsRepo = SettingsRepository(context)
     val sensorManager = SensorManager(context, settingsRepository = settingsRepo)
+    val safetyEngine = com.example.data.engine.NetraSafetyEngine(context)
+    val safetyEngineState = safetyEngine.safetyEngineState
+    val alertManager = safetyEngine.alertManager
     
     // Inject CanonicalEventManager lazily
     val eventManager by lazy { com.example.data.event.CanonicalEventManager(sensorManager.stateManager) }
@@ -251,21 +254,15 @@ class NetraSafetyRepository(private val context: Context) {
         val result = RuleBasedSafetyEngine.evaluateSafety(currentFusion)
         _riskAnalysis.value = result
 
-        // If risk level is WARNING or EMERGENCY, record auto event log
-        if (result.riskLevel == SafetyRiskLevel.WARNING || result.riskLevel == SafetyRiskLevel.EMERGENCY) {
-            safetyEventDao.insertEvent(
-                SafetyEventEntity(
-                    riskLevel = result.riskLevel.name,
-                    riskScore = result.riskScore,
-                    eventType = "HARDWARE_ANOMALY",
-                    title = result.summary,
-                    description = result.explanation,
-                    primarySensorValuesJson = "{\"batteryTemp\":\"${currentFusion.batteryTempC}°C\", \"impactGForce\":\"${"%.1f".format(currentFusion.impactGForce)}G\", \"magneticField\":\"${"%.1f".format(currentFusion.magneticMagnitudeuT)}µT\"}",
-                    aiRecommendation = result.recommendations.joinToString("\n• "),
-                    isVerifiedHardwareEvent = true
-                )
+        // Evaluate comprehensive canonical safety engine
+        try {
+            val thermalThreshold = settingsRepo.thermalThresholdC.first()
+            safetyEngine.evaluateSafetyConditions(
+                fusionState = currentFusion,
+                liveReadings = liveReadings.value,
+                thermalThresholdC = thermalThreshold
             )
-        }
+        } catch (_: Exception) {}
     }
 
     suspend fun triggerSampleEvent(title: String, riskLevel: SafetyRiskLevel, score: Int, desc: String) {

@@ -111,6 +111,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val fusionState: StateFlow<SensorFusionState> = repository.fusionState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SensorFusionState())
 
+    val safetyEngineState: StateFlow<com.example.data.model.SafetyEngineState> = repository.safetyEngineState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.data.model.SafetyEngineState())
+
+    fun evaluateSafetyConditions() {
+        viewModelScope.launch {
+            repository.evaluateAiRisk()
+        }
+    }
+
     val riskAnalysis: StateFlow<RiskAnalysisResult> = repository.riskAnalysis
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), RiskAnalysisResult(0, SafetyRiskLevel.SAFE, "", emptyList(), ""))
     val liveReadings: StateFlow<Map<String, RawSensorReading>> = repository.liveReadings
