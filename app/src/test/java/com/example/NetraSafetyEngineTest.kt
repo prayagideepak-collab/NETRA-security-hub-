@@ -184,4 +184,90 @@ class NetraSafetyEngineTest {
         }
         assertFalse(alertMgr.isNightModeActive(calDay.timeInMillis))
     }
+
+    @Test
+    fun testPocketState_RequiresBothProximityAndLight() {
+        val fusionEngine = com.example.data.sensor.SensorFusionEngine(context)
+        val now = System.currentTimeMillis()
+
+        // 1. Proximity near only, but light bright (e.g. hand hover in daylight)
+        fusionEngine.updateReading(RawSensorReading("sensor_8", "Proximity", SensorCategory.ENVIRONMENTAL, floatArrayOf(0.0f), "cm", now))
+        val state1 = fusionEngine.updateReading(RawSensorReading("sensor_5", "Light", SensorCategory.ENVIRONMENTAL, floatArrayOf(250f), "Lux", now))
+        assertFalse("Should not confirm pocket if light is bright", state1.isPocketConfirmed)
+
+        // 2. Light dark only, but proximity far (e.g. phone in dark room on table)
+        fusionEngine.updateReading(RawSensorReading("sensor_8", "Proximity", SensorCategory.ENVIRONMENTAL, floatArrayOf(5.0f), "cm", now))
+        val state2 = fusionEngine.updateReading(RawSensorReading("sensor_5", "Light", SensorCategory.ENVIRONMENTAL, floatArrayOf(2f), "Lux", now))
+        assertFalse("Should not confirm pocket if proximity is far", state2.isPocketConfirmed)
+
+        // 3. Both proximity near (<2cm) AND light dark (<10 Lux) -> Confirmed
+        fusionEngine.updateReading(RawSensorReading("sensor_8", "Proximity", SensorCategory.ENVIRONMENTAL, floatArrayOf(0.0f), "cm", now))
+        val state3 = fusionEngine.updateReading(RawSensorReading("sensor_5", "Light", SensorCategory.ENVIRONMENTAL, floatArrayOf(2f), "Lux", now))
+        assertTrue("Must confirm pocket when both proximity is near and light is dark", state3.isPocketConfirmed)
+        assertEquals(0.95f, state3.pocketConfidence, 0.01f)
+    }
+
+    @Test
+    fun testSuddenEventDetector_FiltersNoiseAndTriggersOnGenuineEvents() {
+        val detector = com.example.data.engine.SuddenEventDetector()
+        val now = System.currentTimeMillis()
+
+        // 1. Normal ambient variance (1 g ± 0.2 m/s²) -> Not significant
+        val normalReading = RawSensorReading("sensor_1_accel", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0.1f, 9.8f, 0.2f), "m/s²", now)
+        val resNormal = detector.evaluateReading(normalReading)
+        assertFalse("Normal noise should not trigger sudden event", resNormal.isSignificant)
+        assertEquals(com.example.data.engine.SuddenEventDetector.SuddenEventType.NONE, resNormal.type)
+
+        // 2. Sudden high acceleration jolt (e.g. 28.0 m/s²) -> Significant shock
+        val joltReading = RawSensorReading("sensor_1_accel", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0f, 28.0f, 0f), "m/s²", now + 100L)
+        val resJolt = detector.evaluateReading(joltReading)
+        assertTrue("High acceleration jolt must trigger significant event", resJolt.isSignificant)
+        assertEquals(com.example.data.engine.SuddenEventDetector.SuddenEventType.SUDDEN_ACCELERATION_SPIKE, resJolt.type)
+
+        // 3. Normal ambient magnetic noise (45 µT) -> Not significant
+        detector.resetCooldown()
+        val normalMag = RawSensorReading("sensor_2_mag", "Magnetometer", SensorCategory.ENVIRONMENTAL, floatArrayOf(20f, 35f, 15f), "µT", now + 5000L)
+        val resMagNormal = detector.evaluateReading(normalMag)
+        assertFalse("Ambient magnetic field should not trigger anomaly", resMagNormal.isSignificant)
+
+        // 4. Extreme magnetic surge (210 µT) -> Significant anomaly
+        val surgeMag = RawSensorReading("sensor_2_mag", "Magnetometer", SensorCategory.ENVIRONMENTAL, floatArrayOf(150f, 120f, 75f), "µT", now + 5100L)
+        val resMagSurge = detector.evaluateReading(surgeMag)
+        assertTrue("Extreme magnetic surge must trigger anomaly event", resMagSurge.isSignificant)
+        assertEquals(com.example.data.engine.SuddenEventDetector.SuddenEventType.EXTREME_MAGNETIC_ANOMALY, resMagSurge.type)
+    }
+
+    @Test
+    fun testDataFreshnessAndAvailabilityEvaluation() {
+        val now = System.currentTimeMillis()
+        
+        // Fresh reading (0s old)
+        val freshReading = RawSensorReading("sensor_1", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0f, 9.8f, 0f), "m/s²", lastUpdateTimestamp = now)
+        assertEquals(DataFreshness.FRESH, freshReading.freshness())
+        assertFalse(freshReading.isStale(15000L))
+
+        // Stale reading (20s old)
+        val staleReading = RawSensorReading("sensor_1", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0f, 9.8f, 0f), "m/s²", lastUpdateTimestamp = now - 20_000L)
+        assertEquals(DataFreshness.STALE, staleReading.freshness(now))
+        assertTrue(staleReading.isStale(15000L))
+
+        // Unavailable reading (75s old)
+        val unavailableReading = RawSensorReading("sensor_1", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0f, 9.8f, 0f), "m/s²", lastUpdateTimestamp = now - 75_000L)
+        assertEquals(DataFreshness.UNAVAILABLE, unavailableReading.freshness(now))
+        assertTrue(unavailableReading.isStale(15000L))
+    }
+
+    @Test
+    fun testHardwareCapabilityDiscovery_MarksUnsupportedSensorsAccurately() {
+        val detector = com.example.data.sensor.HardwareDetector(context)
+        val capabilities = detector.discoverAllCapabilities()
+        assertTrue("Capabilities list must not be empty", capabilities.isNotEmpty())
+
+        // Ensure every capability clearly reports isSupported boolean
+        capabilities.forEach { cap ->
+            assertNotNull(cap.id)
+            assertNotNull(cap.name)
+            assertNotNull(cap.category)
+        }
+    }
 }

@@ -47,6 +47,16 @@ data class RawSensorReading(
         return (System.currentTimeMillis() - lastUpdateTimestamp) > thresholdMs
     }
 
+    fun freshness(now: Long = System.currentTimeMillis()): DataFreshness {
+        val age = now - lastUpdateTimestamp
+        return when {
+            age < 5_000L -> DataFreshness.FRESH
+            age < 15_000L -> DataFreshness.DELAYED
+            age < 60_000L -> DataFreshness.STALE
+            else -> DataFreshness.UNAVAILABLE
+        }
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false

@@ -198,25 +198,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val privacyScannerState: StateFlow<PrivacyScannerState> = _privacyScannerState.asStateFlow()
 
     // Location & Cross-Verification State Flows
-    private val _currentCity = MutableStateFlow("Prayagraj")
+    private val _currentCity = MutableStateFlow("Location Unavailable")
     val currentCity: StateFlow<String> = _currentCity.asStateFlow()
 
-    private val _currentState = MutableStateFlow("Uttar Pradesh")
+    private val _currentState = MutableStateFlow("Location Unavailable")
     val currentState: StateFlow<String> = _currentState.asStateFlow()
 
-    private val _currentCountry = MutableStateFlow("India")
+    private val _currentCountry = MutableStateFlow("Location Unavailable")
     val currentCountry: StateFlow<String> = _currentCountry.asStateFlow()
 
-    private val _locationProvider = MutableStateFlow("GPS & Network (Cross-Verified)")
+    private val _locationProvider = MutableStateFlow("GPS & Network")
     val locationProvider: StateFlow<String> = _locationProvider.asStateFlow()
 
-    private val _locationConfidence = MutableStateFlow(96)
+    private val _locationConfidence = MutableStateFlow(0)
     val locationConfidence: StateFlow<Int> = _locationConfidence.asStateFlow()
 
-    private val _gpsStatus = MutableStateFlow("Active (High Precision)")
+    private val _gpsStatus = MutableStateFlow("Initializing GNSS")
     val gpsStatus: StateFlow<String> = _gpsStatus.asStateFlow()
 
-    private val _networkStatus = MutableStateFlow("Cellular Triangulation Active")
+    private val _networkStatus = MutableStateFlow("Cellular / Network Standby")
     val networkStatus: StateFlow<String> = _networkStatus.asStateFlow()
 
     val isDeveloperAuthenticated = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -645,9 +645,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             val addresses = geocoder.getFromLocation(lat, lng, 1)
                             if (!addresses.isNullOrEmpty()) {
                                 val address = addresses[0]
-                                val city = address.locality ?: address.subAdminArea ?: address.adminArea ?: "Prayagraj"
-                                val adminArea = address.adminArea ?: "Uttar Pradesh"
-                                val countryName = address.countryName ?: "India"
+                                val city = address.locality ?: address.subAdminArea ?: address.adminArea ?: "Location Verified"
+                                val adminArea = address.adminArea ?: "Region Available"
+                                val countryName = address.countryName ?: "Country Available"
 
                                 val confidence = if (lat != 0.0 && lng != 0.0) maxOf(92, state.journeyConfidenceScore) else 85
                                 _locationConfidence.value = confidence
