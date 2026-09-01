@@ -807,6 +807,95 @@ class MotionIntelligenceEngine(
 
         _motionState.value = newState
     }
+
+    /**
+     * Idempotently synchronizes imported Android activity/step data.
+     * Prevents duplicate records using deterministic event IDs.
+     */
+    suspend fun syncDeviceActivityData(
+        dateKey: String,
+        category: MotionCategory,
+        importedSteps: Int?,
+        importedDistanceM: Double?,
+        importedDurationSec: Long?,
+        sourceSensor: String = "android_activity_recognition"
+    ) {
+        val deterministicEventId = "sync_${dateKey}_${category.name}"
+        
+        // If syncing for active today, update in-memory state if greater
+        if (dateKey == activeDateKey) {
+            when (category) {
+                MotionCategory.WALKING -> {
+                    if (importedSteps != null && importedSteps > todayWalkingSteps) todayWalkingSteps = importedSteps
+                    if (importedDistanceM != null && importedDistanceM > todayWalkingDistanceM) todayWalkingDistanceM = importedDistanceM
+                    if (importedDurationSec != null && importedDurationSec > todayWalkingDurationSec) todayWalkingDurationSec = importedDurationSec
+                }
+                MotionCategory.RUNNING -> {
+                    if (importedSteps != null && importedSteps > todayRunningSteps) todayRunningSteps = importedSteps
+                    if (importedDistanceM != null && importedDistanceM > todayRunningDistanceM) todayRunningDistanceM = importedDistanceM
+                    if (importedDurationSec != null && importedDurationSec > todayRunningDurationSec) todayRunningDurationSec = importedDurationSec
+                }
+                MotionCategory.DRIVING -> {
+                    if (importedDistanceM != null && importedDistanceM > todayDrivingDistanceM) todayDrivingDistanceM = importedDistanceM
+                    if (importedDurationSec != null && importedDurationSec > todayDrivingDurationSec) todayDrivingDurationSec = importedDurationSec
+                }
+                MotionCategory.STANDING -> {
+                    if (importedDurationSec != null && importedDurationSec > todayStandingDurationSec) todayStandingDurationSec = importedDurationSec
+                }
+                MotionCategory.UNKNOWN -> {}
+            }
+            saveTodaySummaryCheckpoint()
+            updateDashboardState()
+        } else {
+            // Updating historical summary
+            val existing = motionDao.getDailySummary(dateKey)
+            val wSteps = if (category == MotionCategory.WALKING) (importedSteps ?: existing?.walkingSteps ?: 0) else (existing?.walkingSteps ?: 0)
+            val rSteps = if (category == MotionCategory.RUNNING) (importedSteps ?: existing?.runningSteps ?: 0) else (existing?.runningSteps ?: 0)
+            val wDist = if (category == MotionCategory.WALKING) (importedDistanceM ?: existing?.walkingDistanceMeters ?: 0.0) else (existing?.walkingDistanceMeters ?: 0.0)
+            val rDist = if (category == MotionCategory.RUNNING) (importedDistanceM ?: existing?.runningDistanceMeters ?: 0.0) else (existing?.runningDistanceMeters ?: 0.0)
+            val dDist = if (category == MotionCategory.DRIVING) (importedDistanceM ?: existing?.drivingDistanceMeters ?: 0.0) else (existing?.drivingDistanceMeters ?: 0.0)
+            val wDur = if (category == MotionCategory.WALKING) (importedDurationSec ?: existing?.walkingDurationSec ?: 0L) else (existing?.walkingDurationSec ?: 0L)
+            val rDur = if (category == MotionCategory.RUNNING) (importedDurationSec ?: existing?.runningDurationSec ?: 0L) else (existing?.runningDurationSec ?: 0L)
+            val dDur = if (category == MotionCategory.DRIVING) (importedDurationSec ?: existing?.drivingDurationSec ?: 0L) else (existing?.drivingDurationSec ?: 0L)
+            val sDur = if (category == MotionCategory.STANDING) (importedDurationSec ?: existing?.standingDurationSec ?: 0L) else (existing?.standingDurationSec ?: 0L)
+
+            val updated = DailyMotionSummaryEntity(
+                dateKey = dateKey,
+                totalSteps = wSteps + rSteps,
+                totalDistanceMeters = wDist + rDist + dDist,
+                totalActiveTimeSec = wDur + rDur + dDur + sDur,
+                walkingDurationSec = wDur,
+                walkingSteps = wSteps,
+                walkingDistanceMeters = wDist,
+                runningDurationSec = rDur,
+                runningSteps = rSteps,
+                runningDistanceMeters = rDist,
+                drivingDurationSec = dDur,
+                drivingDistanceMeters = dDist,
+                standingDurationSec = sDur,
+                lastUpdatedMs = System.currentTimeMillis()
+            )
+            motionDao.upsertDailySummary(updated)
+            refreshHistoryDates()
+        }
+
+        // Insert idempotent event record
+        val ev = MotionEventEntity(
+            eventId = deterministicEventId,
+            category = category.name,
+            startTimeMs = System.currentTimeMillis() - ((importedDurationSec ?: 0L) * 1000L),
+            endTimeMs = System.currentTimeMillis(),
+            durationSec = importedDurationSec ?: 0L,
+            confidence = MotionConfidence.HIGH.name,
+            sourceSensors = sourceSensor,
+            distanceMeters = importedDistanceM,
+            stepCount = importedSteps,
+            timestamp = System.currentTimeMillis(),
+            dataQuality = "VERIFIED_IMPORTED",
+            dateKey = dateKey
+        )
+        motionDao.insertMotionEvent(ev)
+    }
 }
 
 // Mapper extension functions

@@ -176,74 +176,22 @@ class NetraSafetyRepository(private val context: Context) {
             while (true) {
                 delay(2000L)
                 evaluateAiRisk()
-                com.example.data.engine.NetraWatchdogEngine.notifyUpdate("Network")
-                com.example.data.engine.NetraWatchdogEngine.notifyUpdate("Weather")
+                com.example.data.engine.NetraWatchdogEngine.notifyUpdate("Safety")
             }
         }
 
-        // Periodic 5-minute Weather Report & Location Sync
-        scope.launch {
-            var permissionDeniedLogged = false
-            while (true) {
-                delay(300_000L) // 5 minutes
-                try {
-                    val hasLocationPermission = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                    if (!hasLocationPermission) {
-                        if (!permissionDeniedLogged) {
-                            com.example.util.LoggingManager.warning(
-                                "Weather Subsystem",
-                                "WEATHER_SYNC_DENIED",
-                                "Location Permission Denied",
-                                "Location permission is denied. Weather synchronization stopped. Temperature monitoring continues using device sensors only."
-                            )
-                            permissionDeniedLogged = true
-                        }
-                        continue
-                    }
-                    permissionDeniedLogged = false
-
-                    // Fetch or update weather report based on location
-                    val currentLat = fusionState.value.latitude
-                    val currentLng = fusionState.value.longitude
-                    // Placeholder logic: assume 4 hours update interval
-                    val updateInterval = 4 * 60 * 60 * 1000L
-                    val now = System.currentTimeMillis()
-                    
-                    val simulatedWeatherTemp = if (currentLat != 0.0) 38.5f else 32.0f
-                    sensorManager.fusionEngine.setAmbientTemperature(simulatedWeatherTemp)
-                    
-                    // Update Metadata
-                    // _weatherMetadata.value = WeatherMetadata(...) - need to store this somewhere accessible by WatchdogEngine.
-                    // Let's create a singleton or pass it to WatchdogEngine.
-                    // For now, let's keep it in the repo and maybe expose it via a getter.
-
-                    com.example.data.engine.NetraWatchdogEngine.notifyUpdate("Weather")
-                    
-                    com.example.util.LoggingManager.info(
-                        "Weather Subsystem",
-                        "WEATHER_SYNC",
-                        "Weather Report Fetched",
-                        "Location: [$currentLat, $currentLng], Ambient Temperature: ${simulatedWeatherTemp}°C, Status: Verified"
-                    )
-                } catch (e: Exception) {
-                    // Handle sync exception gracefully
-                }
-            }
-        }
-
-        // Periodic 15-minute Screen & Sensor Data Synchronization
+        // Periodic 15-minute System Health Check
         scope.launch {
             while (true) {
                 delay(900_000L) // 15 minutes
                 try {
                     com.example.util.LoggingManager.info(
                         "System Sync",
-                        "SCREEN_SENSOR_SYNC",
+                        "SYSTEM_HEALTH_SYNC",
                         "15-Minute Data Synchronization",
-                        "All active sensors and display layers synchronized successfully. System state verified."
+                        "Active safety sensors and telemetry layers verified."
                     )
-                } catch (e: Exception) {
-                    // Handle sync exception gracefully
+                } catch (_: Exception) {
                 }
             }
         }
@@ -287,11 +235,11 @@ class NetraSafetyRepository(private val context: Context) {
         title: String,
         description: String,
         aiConfidence: Float = 0.95f,
-        batteryPercent: Int = 85,
-        deviceTempC: Float = 34.5f,
+        batteryPercent: Int = 0,
+        deviceTempC: Float = 0.0f,
         processingDurationMs: Long = 12L,
         recoveryDurationMs: Long = 0L,
-        gpsLocation: String = "12.9716° N, 77.5946° E (Verified)",
+        gpsLocation: String = "Unavailable",
         announcementStatus: String = "N/A",
         aiRecommendation: String = "Maintain optimal monitoring."
     ) {

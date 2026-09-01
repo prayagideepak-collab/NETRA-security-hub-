@@ -605,13 +605,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    init {
-        val periodicSync = androidx.work.PeriodicWorkRequestBuilder<com.example.data.engine.DataSyncWorker>(5, java.util.concurrent.TimeUnit.MINUTES)
-            .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
-            .build()
-        androidx.work.WorkManager.getInstance(application).enqueueUniquePeriodicWork("netra_sync", androidx.work.ExistingPeriodicWorkPolicy.KEEP, periodicSync)
+    val syncManager = com.example.data.pipeline.DeviceDataSyncManager(
+        application.applicationContext,
+        repository.sensorManager.motionIntelligenceEngine,
+        repository
+    )
+    val syncStatus = syncManager.syncStatus
+    val lastSyncTimestamp = syncManager.lastSyncTimestamp
 
-        val auditWork = androidx.work.PeriodicWorkRequestBuilder<com.example.data.engine.HealthAuditWorker>(5, java.util.concurrent.TimeUnit.MINUTES)
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            syncManager.performStartupSync()
+        }
+
+        val dataScheduler = com.example.data.engine.DataScheduler(application)
+        dataScheduler.scheduleSync()
+
+        val auditWork = androidx.work.PeriodicWorkRequestBuilder<com.example.data.engine.HealthAuditWorker>(15, java.util.concurrent.TimeUnit.MINUTES)
             .build()
         androidx.work.WorkManager.getInstance(application).enqueueUniquePeriodicWork("netra_audit", androidx.work.ExistingPeriodicWorkPolicy.KEEP, auditWork)
 

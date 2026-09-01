@@ -18,22 +18,8 @@ class DataSyncWorker(context: Context, params: WorkerParameters) : CoroutineWork
             try {
                 LoggingManager.info("SyncEngine", "DATA_SYNC_START", "Data sync cycle initiated.", "Automated synchronization cycle. Time limit: ${timeLimit / 1000}s.")
                 
-                // --- INGESTION LOGIC ---
-                // For now, simulating ingestion and logging
-                
-                val db = NetraDatabase.getInstance(applicationContext)
-                db.safetyEventDao().insertEvent(
-                    SafetyEventEntity(
-                        riskLevel = "INFORMATION",
-                        riskScore = 0,
-                        eventType = "DATA_SYNC_COMPLETED",
-                        title = "Data Synchronization",
-                        description = "Data successfully imported and synchronized.",
-                        primarySensorValuesJson = "{\"status\":\"success\", \"timestamp\":\"${System.currentTimeMillis()}\"}",
-                        aiRecommendation = "Maintain monitoring.",
-                        isVerifiedHardwareEvent = true
-                    )
-                )
+                val syncManager = com.example.data.pipeline.DeviceDataSyncManager(applicationContext)
+                syncManager.performPeriodicSync()
                 
                 LoggingManager.info("SyncEngine", "DATA_SYNC_SUCCESS", "Data sync successful.", "Synchronization cycle completed within constraints.")
                 Result.success()

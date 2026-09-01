@@ -33,11 +33,11 @@ object LoggingManager {
         title: String,
         description: String,
         aiConfidence: Float = 0.95f,
-        batteryPercent: Int = 85,
-        deviceTempC: Float = 34.5f,
+        batteryPercent: Int = 0,
+        deviceTempC: Float = 0.0f,
         processingDurationMs: Long = 12L,
         recoveryDurationMs: Long = 0L,
-        gpsLocation: String = "12.9716° N, 77.5946° E (Verified)",
+        gpsLocation: String = "Unavailable",
         announcementStatus: String = "N/A",
         aiRecommendation: String = "Maintain optimal monitoring."
     ) {

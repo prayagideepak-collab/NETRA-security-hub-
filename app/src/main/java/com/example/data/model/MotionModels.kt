@@ -186,6 +186,11 @@ data class DailyMotionDashboardState(
 )
 
 object MotionTimeFormatter {
+    fun formatTimelineDate(epochMs: Long): String {
+        val sdf = SimpleDateFormat("ddMMyyyy", Locale.getDefault())
+        return sdf.format(Date(epochMs))
+    }
+
     fun formatDisplayDate(epochMs: Long): String {
         val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         return sdf.format(Date(epochMs))

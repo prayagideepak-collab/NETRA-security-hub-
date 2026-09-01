@@ -138,13 +138,27 @@ fun MotionIntelligenceScreen(
             )
         }
 
-        // At the bottom:
-        // 5. Total Steps, 6. Total Distance, 7. Total Active Time, 8. Total Standing Time
+        // Motion Timeline (Confirmed Sessions & Start/End Snapshots)
         item {
-            TotalActivitySummaryCard(total = motionState.totalActivity)
+            MotionTimelineCard(
+                routeSessions = motionState.routeSessions,
+                events = motionState.recentEvents
+            )
         }
 
-        // 9. Daily Targets / Progress
+        // At the bottom:
+        // Daily Activity Summary: Total Steps, Total Distance, Total Standing Time, Activity-wise details
+        item {
+            TotalActivitySummaryCard(
+                total = motionState.totalActivity,
+                walkingStats = motionState.walkingStats,
+                runningStats = motionState.runningStats,
+                standingStats = motionState.standingStats,
+                drivingStats = motionState.drivingStats
+            )
+        }
+
+        // Daily Targets / Progress
         item {
             ActivityTargetProgressCard(
                 progress = motionState.targetProgress,
@@ -401,8 +415,8 @@ fun ActivityTargetProgressCard(
             if (progress.targetConfigured) {
                 // Steps Progress
                 val stepTarget = progress.targetSteps ?: 10000
-                val stepsDone = progress.todaySteps ?: 0
-                val stepPct = progress.stepProgressPct ?: 0
+                val stepsDone = progress.todaySteps
+                val stepPct = progress.stepProgressPct
 
                 Column {
                     Row(
@@ -410,13 +424,17 @@ fun ActivityTargetProgressCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Daily Steps Target", style = MaterialTheme.typography.bodySmall, color = BentoTextSecondary)
-                        Text("$stepsDone / $stepTarget steps ($stepPct%)", style = MaterialTheme.typography.bodySmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
+                        if (stepsDone != null && stepPct != null) {
+                            Text("$stepsDone / $stepTarget steps ($stepPct%)", style = MaterialTheme.typography.bodySmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
+                        } else {
+                            Text("Unavailable / $stepTarget steps", style = MaterialTheme.typography.bodySmall, color = BentoTextMuted)
+                        }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     LinearProgressIndicator(
-                        progress = { (stepPct / 100f).coerceIn(0f, 1f) },
+                        progress = { if (stepPct != null) (stepPct / 100f).coerceIn(0f, 1f) else 0f },
                         modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                        color = BentoGreenPrimary,
+                        color = if (stepPct != null) BentoGreenPrimary else BentoTextMuted.copy(alpha = 0.3f),
                         trackColor = BentoHeroCardBg
                     )
                 }
@@ -530,18 +548,26 @@ fun StandingStatsCard(standingStats: SubActivityStats) {
         iconTint = BentoBlue,
         testTag = "standing_stats_card"
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(standingStats.durationSec))
-            MetricColumn(label = "Session Status", value = standingStats.statusDescription.ifBlank { "Stationary" })
-            MetricColumn(label = "Safety State", value = "Nominal")
+        if (standingStats.durationSec <= 0L && !standingStats.isAvailable) {
+            Text(
+                text = "No standing activity recorded yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = BentoTextMuted
+            )
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(standingStats.durationSec))
+                MetricColumn(label = "Session Status", value = standingStats.statusDescription.ifBlank { "Stationary" })
+                MetricColumn(label = "Safety State", value = "Nominal")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Accurately recorded during active user interaction. Prolonged unattended desk placement is filtered.",
+                style = MaterialTheme.typography.labelSmall,
+                color = BentoTextMuted,
+                fontSize = 10.sp
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Accurately recorded during active user interaction. Prolonged unattended desk placement is filtered.",
-            style = MaterialTheme.typography.labelSmall,
-            color = BentoTextMuted,
-            fontSize = 10.sp
-        )
     }
 }
 
@@ -557,14 +583,23 @@ fun WalkingStatsCard(
         iconTint = BentoGreenPrimary,
         testTag = "walking_stats_card"
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(walkingStats.durationSec))
-            MetricColumn(label = "Steps", value = walkingStats.steps?.toString() ?: "0")
-            MetricColumn(label = "Distance", value = MotionTimeFormatter.formatDistance(walkingStats.distanceMeters))
-        }
-        if (walkingStats.cadenceStepsPerMin != null) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Text("Cadence: ${walkingStats.cadenceStepsPerMin} steps/min", style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary)
+        val hasWalkingData = walkingStats.durationSec > 0L || (walkingStats.steps != null && walkingStats.steps > 0) || walkingStats.distanceMeters != null
+        if (!hasWalkingData) {
+            Text(
+                text = "No walking data available yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = BentoTextMuted
+            )
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(walkingStats.durationSec))
+                MetricColumn(label = "Steps", value = walkingStats.steps?.toString() ?: "Steps unavailable")
+                MetricColumn(label = "Distance", value = MotionTimeFormatter.formatDistance(walkingStats.distanceMeters))
+            }
+            if (walkingStats.cadenceStepsPerMin != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Cadence: ${walkingStats.cadenceStepsPerMin} steps/min", style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary)
+            }
         }
 
         // Route Snapshots (Walking Start & End Single-Shot Location Fixes)
@@ -573,7 +608,7 @@ fun WalkingStatsCard(
 
         if (currentWalkingSession != null || walkingSessions.isNotEmpty()) {
             Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = BentoBorder.copy(alpha = 0.6f))
+            HorizontalDivider(color = BentoBorder.copy(alpha = 0.6f))
             Spacer(modifier = Modifier.height(8.dp))
 
             Text("Route Snapshots & Accuracy", style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
@@ -596,7 +631,7 @@ fun WalkingStatsCard(
                         if (startLoc != null) {
                             Text("Start Point: %.5f, %.5f (±%.1f m)".format(startLoc.latitude, startLoc.longitude, startLoc.accuracyMeters ?: 0f), style = MaterialTheme.typography.bodySmall, color = BentoTextSecondary, fontSize = 11.sp)
                         } else {
-                            Text("Start Point: Waiting for GPS fix...", style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 11.sp)
+                            Text("Start Point: Location unavailable for this activity", style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 11.sp)
                         }
                         if (currentWalkingSession.rainContext != RainContext.UNAVAILABLE) {
                             Text("Context: ${currentWalkingSession.rainContext.displayName}", style = MaterialTheme.typography.labelSmall, color = BentoBlue, fontSize = 11.sp)
@@ -617,11 +652,15 @@ fun WalkingStatsCard(
                             Text("Completed Walk (${MotionTimeFormatter.formatDuration(((session.endTimeMs ?: session.startTimeMs) - session.startTimeMs) / 1000L)})", style = MaterialTheme.typography.labelSmall, color = BentoTextPrimary, fontWeight = FontWeight.Medium)
                             if (session.snapshotDistanceMeters != null) {
                                 Text("Geodetic: %.0f m".format(session.snapshotDistanceMeters), style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Distance unavailable", style = MaterialTheme.typography.labelSmall, color = BentoTextMuted)
                             }
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         if (session.startLocation != null) {
                             Text("Start: %.5f, %.5f".format(session.startLocation.latitude, session.startLocation.longitude), style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 10.sp)
+                        } else {
+                            Text("Start: Location unavailable", style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 10.sp)
                         }
                         if (session.endLocation != null) {
                             Text("End: %.5f, %.5f".format(session.endLocation.latitude, session.endLocation.longitude), style = MaterialTheme.typography.bodySmall, color = BentoTextMuted, fontSize = 10.sp)
@@ -647,14 +686,23 @@ fun RunningStatsCard(runningStats: SubActivityStats) {
         iconTint = BentoYellow,
         testTag = "running_stats_card"
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(runningStats.durationSec))
-            MetricColumn(label = "Steps", value = runningStats.steps?.toString() ?: "0")
-            MetricColumn(label = "Distance", value = MotionTimeFormatter.formatDistance(runningStats.distanceMeters))
-        }
-        if (runningStats.cadenceStepsPerMin != null) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Text("Cadence: ${runningStats.cadenceStepsPerMin} steps/min (High Intensity)", style = MaterialTheme.typography.labelSmall, color = BentoYellow)
+        val hasRunningData = runningStats.durationSec > 0L || (runningStats.steps != null && runningStats.steps > 0) || runningStats.distanceMeters != null
+        if (!hasRunningData) {
+            Text(
+                text = "No running activity detected.",
+                style = MaterialTheme.typography.bodySmall,
+                color = BentoTextMuted
+            )
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(runningStats.durationSec))
+                MetricColumn(label = "Steps", value = runningStats.steps?.toString() ?: "Steps unavailable")
+                MetricColumn(label = "Distance", value = MotionTimeFormatter.formatDistance(runningStats.distanceMeters))
+            }
+            if (runningStats.cadenceStepsPerMin != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Cadence: ${runningStats.cadenceStepsPerMin} steps/min (High Intensity)", style = MaterialTheme.typography.labelSmall, color = BentoYellow)
+            }
         }
     }
 }
@@ -671,18 +719,27 @@ fun DrivingStatsCard(
         iconTint = BentoPurple,
         testTag = "driving_stats_card"
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(drivingStats.durationSec))
-            MetricColumn(label = "Distance", value = MotionTimeFormatter.formatDistance(drivingStats.distanceMeters))
-            MetricColumn(label = "Speed Evidence", value = drivingStats.currentSpeedKmH?.let { "%.1f km/h".format(it) } ?: "Unavailable")
+        val hasDrivingData = drivingStats.durationSec > 0L || drivingStats.distanceMeters != null || drivingStats.currentSpeedKmH != null
+        if (!hasDrivingData) {
+            Text(
+                text = "Driving data unavailable.",
+                style = MaterialTheme.typography.bodySmall,
+                color = BentoTextMuted
+            )
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetricColumn(label = "Duration", value = MotionTimeFormatter.formatDuration(drivingStats.durationSec))
+                MetricColumn(label = "Distance", value = MotionTimeFormatter.formatDistance(drivingStats.distanceMeters))
+                MetricColumn(label = "Speed Evidence", value = drivingStats.currentSpeedKmH?.let { "%.1f km/h".format(it) } ?: "Unavailable")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Driving classification requires sustained GNSS speed ≥ 20.0 km/h for confirmation period.",
+                style = MaterialTheme.typography.labelSmall,
+                color = BentoTextMuted,
+                fontSize = 10.sp
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Driving classification requires sustained GNSS speed ≥ 20.0 km/h for confirmation period.",
-            style = MaterialTheme.typography.labelSmall,
-            color = BentoTextMuted,
-            fontSize = 10.sp
-        )
 
         // Route Events (Smart Speed-Drop Snapshots)
         val allEvents = buildList {
@@ -696,7 +753,7 @@ fun DrivingStatsCard(
 
         if (allEvents.isNotEmpty()) {
             Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = BentoBorder.copy(alpha = 0.6f))
+            HorizontalDivider(color = BentoBorder.copy(alpha = 0.6f))
             Spacer(modifier = Modifier.height(8.dp))
             Text("Route Events & Speed Drops", style = MaterialTheme.typography.labelSmall, color = BentoPurple, fontWeight = FontWeight.Bold)
 
@@ -718,6 +775,8 @@ fun DrivingStatsCard(
                         }
                         if (ev.latitude != null && ev.longitude != null) {
                             Text("%.4f, %.4f".format(ev.latitude, ev.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextSecondary, fontSize = 10.sp)
+                        } else {
+                            Text("Location unavailable", style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
                         }
                     }
                 }
@@ -727,7 +786,128 @@ fun DrivingStatsCard(
 }
 
 @Composable
-fun TotalActivitySummaryCard(total: TotalActivityStats) {
+fun MotionTimelineCard(
+    routeSessions: List<MotionRouteSession>,
+    events: List<MotionEvent>
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = BentoCardBg),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+        modifier = Modifier.fillMaxWidth().testTag("motion_timeline_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Timeline, contentDescription = null, tint = BentoGreenPrimary, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Motion Timeline",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = BentoTextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (routeSessions.isEmpty() && events.isEmpty()) {
+                Text(
+                    text = "No confirmed motion sessions recorded for this date.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BentoTextMuted
+                )
+            } else {
+                routeSessions.forEach { session ->
+                    val sDate = MotionTimeFormatter.formatTimelineDate(session.startTimeMs)
+                    val sTime = MotionTimeFormatter.formatDisplayTime(session.startTimeMs)
+                    val eTimeMs = session.endTimeMs ?: session.startTimeMs
+                    val eDate = MotionTimeFormatter.formatTimelineDate(eTimeMs)
+                    val eTime = MotionTimeFormatter.formatDisplayTime(eTimeMs)
+                    val durSec = ((eTimeMs - session.startTimeMs) / 1000L).coerceAtLeast(0L)
+
+                    Surface(
+                        color = BentoHeroCardBg,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val catColor = when (session.activityCategory) {
+                                        MotionCategory.WALKING -> BentoGreenPrimary
+                                        MotionCategory.RUNNING -> BentoYellow
+                                        MotionCategory.DRIVING -> BentoPurple
+                                        MotionCategory.STANDING -> BentoBlue
+                                        MotionCategory.UNKNOWN -> BentoTextMuted
+                                    }
+                                    Box(modifier = Modifier.size(8.dp).background(catColor, CircleShape))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = session.activityCategory.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = BentoTextPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Text(
+                                    text = "ID: ${session.sessionId.take(8)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BentoTextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column {
+                                    Text("Start: Date: $sDate, Time: $sTime", style = MaterialTheme.typography.labelSmall, color = BentoTextSecondary, fontSize = 11.sp)
+                                    Text("End:   Date: $eDate, Time: $eTime", style = MaterialTheme.typography.labelSmall, color = BentoTextSecondary, fontSize = 11.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Duration: ${MotionTimeFormatter.formatDuration(durSec)}", style = MaterialTheme.typography.labelSmall, color = BentoTextPrimary, fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                    if (session.snapshotDistanceMeters != null) {
+                                        Text("Distance: ${MotionTimeFormatter.formatDistance(session.snapshotDistanceMeters)}", style = MaterialTheme.typography.labelSmall, color = BentoGreenPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    } else {
+                                        Text("Distance unavailable", style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+
+                            if (session.startLocation != null || session.endLocation != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    if (session.startLocation != null) {
+                                        Text("Start GPS: %.4f, %.4f".format(session.startLocation.latitude, session.startLocation.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                    } else {
+                                        Text("Start GPS: Unavailable", style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                    }
+                                    if (session.endLocation != null) {
+                                        Text("End GPS: %.4f, %.4f".format(session.endLocation.latitude, session.endLocation.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TotalActivitySummaryCard(
+    total: TotalActivityStats,
+    walkingStats: SubActivityStats,
+    runningStats: SubActivityStats,
+    standingStats: SubActivityStats,
+    drivingStats: SubActivityStats
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = BentoCardBg),
         shape = RoundedCornerShape(16.dp),
@@ -739,7 +919,7 @@ fun TotalActivitySummaryCard(total: TotalActivityStats) {
                 Icon(Icons.Default.Assessment, contentDescription = null, tint = BentoGreenPrimary, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Total Activity Summary",
+                    text = "Daily Activity Summary",
                     style = MaterialTheme.typography.titleSmall,
                     color = BentoTextPrimary,
                     fontWeight = FontWeight.Bold
@@ -748,23 +928,43 @@ fun TotalActivitySummaryCard(total: TotalActivityStats) {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 5. Total Steps, 6. Total Distance, 7. Total Active Time, 8. Total Standing Time
+            // Primary Metrics: Total Steps, Total Distance, Total Standing Time
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                MetricColumn(label = "TOTAL STEPS", value = total.totalSteps?.toString() ?: "0", isPrimary = true)
+                MetricColumn(label = "TOTAL STEPS", value = total.totalSteps?.toString() ?: "Unavailable", isPrimary = true)
                 MetricColumn(label = "TOTAL DISTANCE", value = MotionTimeFormatter.formatDistance(total.totalDistanceMeters), isPrimary = true)
-                MetricColumn(label = "ACTIVE TIME", value = MotionTimeFormatter.formatDuration(total.totalActiveTimeSec), isPrimary = true)
                 MetricColumn(label = "STANDING TIME", value = MotionTimeFormatter.formatDuration(total.standingDurationSec), isPrimary = true)
             }
 
             Spacer(modifier = Modifier.height(14.dp))
-            Divider(color = BentoBorder)
-            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = BentoBorder)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Activity-attributed steps breakdown
+            Text("Activity-Wise Breakdown", style = MaterialTheme.typography.labelSmall, color = BentoTextSecondary, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Walking: steps, duration, distance
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                MetricColumn(label = "WALKING STEPS", value = total.walkingSteps?.toString() ?: "0")
-                MetricColumn(label = "RUNNING STEPS", value = total.runningSteps?.toString() ?: "0")
-                MetricColumn(label = "DRIVING STEPS", value = "0 (Excluded)")
+                MetricColumn(label = "Walking Steps", value = walkingStats.steps?.toString() ?: "Unavailable")
+                MetricColumn(label = "Walking Duration", value = MotionTimeFormatter.formatDuration(walkingStats.durationSec))
+                MetricColumn(label = "Walking Distance", value = MotionTimeFormatter.formatDistance(walkingStats.distanceMeters))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Running: steps, duration, distance
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetricColumn(label = "Running Steps", value = runningStats.steps?.toString() ?: "Unavailable")
+                MetricColumn(label = "Running Duration", value = MotionTimeFormatter.formatDuration(runningStats.durationSec))
+                MetricColumn(label = "Running Distance", value = MotionTimeFormatter.formatDistance(runningStats.distanceMeters))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Standing: duration & Driving: duration, distance
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetricColumn(label = "Standing Duration", value = MotionTimeFormatter.formatDuration(standingStats.durationSec))
+                MetricColumn(label = "Driving Duration", value = MotionTimeFormatter.formatDuration(drivingStats.durationSec))
+                MetricColumn(label = "Driving Distance", value = MotionTimeFormatter.formatDistance(drivingStats.distanceMeters))
             }
         }
     }
