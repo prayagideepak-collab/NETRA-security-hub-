@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer Shield Outline -->
+    <path
+        android:pathData="M54,20 L80,32 C80,60 68,76 54,88 C40,76 28,60 28,32 Z"
+        android:strokeWidth="3.5"
+        android:strokeColor="#00E5FF">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="20"
+                android:endX="54"
+                android:endY="88"
+                android:type="linear">
+                <item android:color="#1A00E5FF" android:offset="0.0" />
+                <item android:color="#0000E5FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Radar Pulse Rings -->
+    <path
+        android:pathData="M54,38 A16,16 0 1 0 54,70 A16,16 0 1 0 54,38"
+        android:strokeColor="#00F5A0"
+        android:strokeWidth="2"
+        android:fillColor="#00000000" />
+
+    <!-- Center Sensor Eye / Core -->
+    <path
+        android:pathData="M54,48 A6,6 0 1 0 54,60 A6,6 0 1 0 54,48"
+        android:fillColor="#00E5FF" />
+
+    <!-- Scanning Crosshair Lines -->
+    <path
+        android:pathData="M54,30 V36 M54,72 V78 M30,54 H36 M72,54 H78"
+        android:strokeColor="#00F5A0"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
+</vector>
