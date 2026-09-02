@@ -35,3 +35,12 @@ val HazardCrimson = BentoRed
 val TextPrimary = BentoTextPrimary
 val TextSecondary = BentoTextSecondary
 val TextMuted = BentoTextMuted
+
+// Dark Premium Theme Additions
+val NetraDarkBackground = Color(0xFF0A0C0B)
+val NetraDarkSurface = Color(0xFF121413)
+val NetraDarkSurfaceElevated = Color(0xFF1A1D1C)
+val NetraDarkBorder = Color(0xFF282C2A)
+val NetraDarkTextPrimary = Color(0xFFE8EAED)
+val NetraDarkTextSecondary = Color(0xFF9AA0A6)
+val NetraDarkTextMuted = Color(0xFF5F6368)

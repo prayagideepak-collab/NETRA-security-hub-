@@ -86,9 +86,6 @@ fun HistoryLogsContainerScreen(
                 )
                 HistoryLogsSubTab.REPORTS_EXPORT -> ReportsScreen(
                     eventLogs = eventLogs,
-                    onTriggerTestEvent = { title, risk, score, desc ->
-                        viewModel.triggerTestEvent(title, risk, score, desc)
-                    },
                     onClearLogs = { viewModel.clearLogs() },
                     onExportTxt = { date, callback -> viewModel.exportLogsToTxtForDate(date, callback) },
                     onExportCsv = { date, callback -> viewModel.exportLogsToCsvForDate(date, callback) },

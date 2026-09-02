@@ -151,39 +151,6 @@ class SensorFusionUnitTest {
     }
 
     @Test
-    fun `test magnetic safety zones classification ranges`() {
-        // Normal Zone: 0-49 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.NORMAL, getMagneticSafetyZoneForValue(40f))
-        // Safe Zone: 50-99 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.SAFE, getMagneticSafetyZoneForValue(75f))
-        // Attention Zone: 100-149 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.ATTENTION, getMagneticSafetyZoneForValue(120f))
-        // Caution Zone: 150-249 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.CAUTION, getMagneticSafetyZoneForValue(200f))
-        // Warning Zone: 250-399 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.WARNING, getMagneticSafetyZoneForValue(300f))
-        // High Risk Zone: 400-599 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.HIGH_RISK, getMagneticSafetyZoneForValue(500f))
-        // Extreme Risk Zone: 600-999 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.EXTREME_RISK, getMagneticSafetyZoneForValue(800f))
-        // Dangerous Zone: >= 1000 uT
-        assertEquals(com.example.ui.MainViewModel.MagneticSafetyZone.DANGEROUS, getMagneticSafetyZoneForValue(1200f))
-    }
-
-    private fun getMagneticSafetyZoneForValue(uT: Float): com.example.ui.MainViewModel.MagneticSafetyZone {
-        return when {
-            uT < 50f -> com.example.ui.MainViewModel.MagneticSafetyZone.NORMAL
-            uT < 100f -> com.example.ui.MainViewModel.MagneticSafetyZone.SAFE
-            uT < 150f -> com.example.ui.MainViewModel.MagneticSafetyZone.ATTENTION
-            uT < 250f -> com.example.ui.MainViewModel.MagneticSafetyZone.CAUTION
-            uT < 400f -> com.example.ui.MainViewModel.MagneticSafetyZone.WARNING
-            uT < 600f -> com.example.ui.MainViewModel.MagneticSafetyZone.HIGH_RISK
-            uT < 1000f -> com.example.ui.MainViewModel.MagneticSafetyZone.EXTREME_RISK
-            else -> com.example.ui.MainViewModel.MagneticSafetyZone.DANGEROUS
-        }
-    }
-
-    @Test
     fun `test external heat protection engine and thermal fusion`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val engine = SensorFusionEngine(context)

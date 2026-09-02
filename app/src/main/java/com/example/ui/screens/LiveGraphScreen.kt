@@ -3,7 +3,6 @@ package com.example.ui.screens
 import android.hardware.Sensor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,27 +11,28 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.RawSensorReading
-
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -54,319 +54,417 @@ fun LiveGraphScreen(
         }
     }
 
-    val currentTimeStr = SimpleDateFormat("hh:mm:ss a", Locale.getDefault()).format(Date())
-    
-    // Calculate stats from buffer
-    val allRecordedValues = state.buffer.flatMap { it.values.toList() }
-    val primaryVal = state.buffer.lastOrNull()?.values?.firstOrNull() ?: 0f
-    val minVal = if (allRecordedValues.isNotEmpty()) allRecordedValues.minOrNull() ?: primaryVal else primaryVal
-    val maxVal = if (allRecordedValues.isNotEmpty()) allRecordedValues.maxOrNull() ?: primaryVal else primaryVal
-    val avgVal = if (allRecordedValues.isNotEmpty()) allRecordedValues.average().toFloat() else primaryVal
-
     val latestReading = state.buffer.lastOrNull()
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .testTag("live_graph_screen"),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    // Screen Background
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = NetraDarkBackground
     ) {
-        item { Spacer(modifier = Modifier.height(4.dp)) }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp)
+                .testTag("live_graph_screen"),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            item { Spacer(modifier = Modifier.height(8.dp)) }
 
-        // Header Title Card
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(BentoCardBg)
-                    .border(1.dp, BentoBorder, RoundedCornerShape(24.dp))
-                    .padding(18.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "LIVE GRAPH",
-                                color = BentoTextPrimary,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = 1.sp
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(BentoHeroCardBg)
-                                    .border(1.dp, BentoGreenPrimary, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(
-                                        imageVector = Icons.Default.FiberManualRecord,
-                                        contentDescription = null,
-                                        tint = if (state.isPaused) BentoAmber else BentoGreenVibrant,
-                                        modifier = Modifier.size(8.dp)
-                                    )
-                                    Text(
-                                        text = if (state.isPaused) "PAUSED" else "LIVE",
-                                        color = if (state.isPaused) BentoAmber else BentoGreenPrimary,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "Last Update: $currentTimeStr",
-                                color = BentoTextSecondary,
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
-
-                    // Sensor Selection Row
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(state.availableSensors) { sensorType ->
-                            val isSelected = state.selectedSensorType == sensorType
-                            val sensorName = when(sensorType) {
-                                Sensor.TYPE_ACCELEROMETER -> "ACCEL"
-                                Sensor.TYPE_GYROSCOPE -> "GYRO"
-                                Sensor.TYPE_MAGNETIC_FIELD -> "MAG"
-                                Sensor.TYPE_LIGHT -> "LIGHT"
-                                else -> "UNKNOWN"
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSelected) BentoGreenPrimary.copy(alpha = 0.2f) else BentoHeroCardBg)
-                                    .border(1.dp, if (isSelected) BentoGreenPrimary else BentoBorder, RoundedCornerShape(12.dp))
-                                    .clickable { onSelectSensor(sensorType) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = sensorName,
-                                    color = if (isSelected) BentoGreenPrimary else BentoTextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
+            item {
+                NetraLiveHeader(state = state)
             }
+
+            item {
+                NetraLiveValue(latestReading = latestReading, state = state, onTogglePause = onTogglePause)
+            }
+
+            item {
+                NetraSensorSelector(state = state, onSelectSensor = onSelectSensor)
+            }
+
+            item {
+                NetraWaveformCard(buffer = state.buffer)
+            }
+
+            item {
+                NetraMetricRow(buffer = state.buffer)
+            }
+
+            item {
+                NetraSessionInfo(latestReading = latestReading, bufferSize = state.buffer.size)
+            }
+            
+            item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+fun NetraLiveHeader(state: LiveGraphState) {
+    val statusText = when {
+        state.buffer.isEmpty() && state.isPaused -> "PAUSED"
+        state.buffer.isEmpty() -> "WAITING"
+        state.isPaused -> "PAUSED"
+        else -> "LIVE"
+    }
+    
+    val statusColor = when (statusText) {
+        "LIVE" -> BentoGreenVibrant
+        "PAUSED" -> BentoAmber
+        else -> NetraDarkTextMuted
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "NETRA",
+                    color = BentoGreenPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = "Human Safety",
+                    color = NetraDarkTextPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(
+                text = "Live Sensor Monitor",
+                color = NetraDarkTextMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
 
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(NetraDarkSurface)
+                .border(1.dp, NetraDarkBorder, RoundedCornerShape(12.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.FiberManualRecord,
+                contentDescription = null,
+                tint = statusColor,
+                modifier = Modifier.size(10.dp)
+            )
+            Text(
+                text = statusText,
+                color = NetraDarkTextPrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun NetraLiveValue(latestReading: RawSensorReading?, state: LiveGraphState, onTogglePause: (Boolean) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         if (latestReading == null) {
-            item {
+            Text(
+                text = "Waiting for live sensor data",
+                color = NetraDarkTextMuted,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(vertical = 24.dp)
+            )
+        } else {
+            val primaryVal = latestReading.values.firstOrNull() ?: 0f
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "%.2f".format(primaryVal),
+                    color = NetraDarkTextPrimary,
+                    fontSize = 64.sp,
+                    fontWeight = FontWeight.Light,
+                    letterSpacing = (-1).sp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = latestReading.unit,
+                    color = NetraDarkTextSecondary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = latestReading.name.uppercase(),
+                    color = NetraDarkTextMuted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 2.sp
+                )
+                
+                // Redesigned Pause/Resume
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(BentoCardBg)
-                        .border(1.dp, BentoBorder, RoundedCornerShape(20.dp))
-                        .padding(32.dp),
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(NetraDarkSurfaceElevated)
+                        .clickable { onTogglePause(!state.isPaused) },
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Timeline,
-                            contentDescription = null,
-                            tint = BentoTextMuted,
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Text(
-                            text = if (state.isPaused) "Paused" else "Waiting for live sensor data",
-                            color = BentoTextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        } else {
-            item {
-                val accentColor = when (latestReading.category) {
-                    com.example.data.model.SensorCategory.MOTION -> BentoGreenPrimary
-                    com.example.data.model.SensorCategory.ENVIRONMENTAL -> Color(0xFF00E5FF)
-                    else -> BentoGreenPrimary
-                }
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = BentoCardBg),
-                    shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, BentoBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Card Header
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(accentColor)
-                                )
-                                Text(
-                                    text = latestReading.name.uppercase(),
-                                    color = accentColor,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                )
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    text = "Unit: ${latestReading.unit}",
-                                    color = BentoTextMuted,
-                                    fontSize = 11.sp
-                                )
-                                IconButton(onClick = { onTogglePause(!state.isPaused) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(
-                                        imageVector = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                        contentDescription = if (state.isPaused) "Resume" else "Pause",
-                                        tint = BentoTextPrimary
-                                    )
-                                }
-                            }
-                        }
-
-                        // 4 Metric Tiles: Current | Min | Max | Avg
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(BentoHeroCardBg)
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceAround
-                        ) {
-                            MetricTile("CURRENT", "%.2f".format(primaryVal), accentColor)
-                            MetricTile("MIN", "%.2f".format(minVal), BentoTextSecondary)
-                            MetricTile("MAX", "%.2f".format(maxVal), BentoRed)
-                            MetricTile("AVG", "%.2f".format(avgVal), BentoGreenPrimary)
-                        }
-
-                        // We pass the buffer to our chart to draw
-                        LiveGraphWaveformChart(
-                            buffer = state.buffer,
-                            unit = latestReading.unit
-                        )
-                    }
+                    Icon(
+                        imageVector = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                        contentDescription = if (state.isPaused) "Resume graph" else "Pause graph",
+                        tint = NetraDarkTextPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
-        item { Spacer(modifier = Modifier.height(24.dp)) }
     }
 }
 
 @Composable
-fun MetricTile(label: String, value: String, valueColor: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = label,
-            color = BentoTextMuted,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = value,
-            color = valueColor,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-fun LiveGraphWaveformChart(
-    buffer: List<RawSensorReading>,
-    unit: String,
-    modifier: Modifier = Modifier
-) {
-    if (buffer.isEmpty()) return
-    
-    val lineColors = androidx.compose.runtime.remember { listOf(BentoGreenPrimary, BentoGreenVibrant, BentoAmber, BentoRed) }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(BentoCardBg)
-            .border(1.dp, BentoBorder, RoundedCornerShape(18.dp))
-            .padding(12.dp)
+fun NetraSensorSelector(state: LiveGraphState, onSelectSensor: (Int) -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
+        items(state.availableSensors) { sensorType ->
+            val isSelected = state.selectedSensorType == sensorType
+            val sensorName = when (sensorType) {
+                Sensor.TYPE_ACCELEROMETER -> "Accelerometer"
+                Sensor.TYPE_GYROSCOPE -> "Gyroscope"
+                Sensor.TYPE_MAGNETIC_FIELD -> "Magnetic Field"
+                Sensor.TYPE_LIGHT -> "Light"
+                else -> "Unknown"
+            }
+            
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isSelected) NetraDarkSurfaceElevated else Color.Transparent)
+                    .border(1.dp, if (isSelected) NetraDarkBorder else Color.Transparent, RoundedCornerShape(8.dp))
+                    .clickable { onSelectSensor(sensorType) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = sensorName,
+                    color = if (isSelected) NetraDarkTextPrimary else NetraDarkTextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NetraWaveformCard(buffer: List<RawSensorReading>) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(NetraDarkSurface)
+            .border(1.dp, NetraDarkBorder, RoundedCornerShape(16.dp))
+            .padding(16.dp)
+    ) {
+        if (buffer.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "No graph data",
+                    color = NetraDarkTextMuted,
+                    fontSize = 14.sp
+                )
+            }
+            return@Box
+        }
+
+        val axisColors = remember { listOf(BentoGreenVibrant, BentoBlue, BentoAmber) }
+
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
 
-            // 1. Grid Lines
-            val gridStepX = width / 6
-            for (i in 1..5) {
+            // Grid Lines
+            val horizontalLines = 4
+            for (i in 0..horizontalLines) {
+                val y = i * (height / horizontalLines)
                 drawLine(
-                    color = BentoBorder,
-                    start = androidx.compose.ui.geometry.Offset(gridStepX * i, 0f),
-                    end = androidx.compose.ui.geometry.Offset(gridStepX * i, height),
+                    color = NetraDarkBorder,
+                    start = Offset(0f, y),
+                    end = Offset(width, y),
                     strokeWidth = 1f
                 )
             }
-            drawLine(
-                color = BentoBorder,
-                start = androidx.compose.ui.geometry.Offset(0f, height / 2),
-                end = androidx.compose.ui.geometry.Offset(width, height / 2),
-                strokeWidth = 1f
-            )
+            val verticalLines = 6
+            for (i in 0..verticalLines) {
+                val x = i * (width / verticalLines)
+                drawLine(
+                    color = NetraDarkBorder,
+                    start = Offset(x, 0f),
+                    end = Offset(x, height),
+                    strokeWidth = 1f
+                )
+            }
 
-            // 2. Render Rolling Buffer Waveform
-            if (buffer.isNotEmpty()) {
-                val pointsCount = buffer.size
-                val stepX = if (pointsCount > 1) width / (pointsCount - 1) else width
-                
-                for (axis in 0 until 3) {
-                    val color = lineColors.getOrElse(axis) { BentoGreenPrimary }
-                    val pathPoints = mutableListOf<androidx.compose.ui.geometry.Offset>()
-                    for (i in buffer.indices) {
-                        val frameValues = buffer[i].values
-                        if (axis < frameValues.size) {
-                            val v = frameValues[axis]
-                            val centerY = height / 2
-                            val mappedY = (centerY - (v * 2.5f)).coerceIn(4f, height - 4f)
-                            val posX = i * stepX
-                            pathPoints.add(androidx.compose.ui.geometry.Offset(posX, mappedY))
-                        }
-                    }
+            // Adaptive Scale Calculation
+            val allValues = buffer.flatMap { it.values.toList() }
+            val globalMin = allValues.minOrNull() ?: 0f
+            val globalMax = allValues.maxOrNull() ?: 0f
+            var range = globalMax - globalMin
+            if (range < 0.01f) range = 0.01f
+            
+            val visibleMin = globalMin - (range * 0.1f)
+            val visibleMax = globalMax + (range * 0.1f)
+            val visibleRange = visibleMax - visibleMin
 
-                    if (pathPoints.size >= 2) {
-                        for (p in 0 until pathPoints.size - 1) {
-                            drawLine(
-                                color = color,
-                                start = pathPoints[p],
-                                end = pathPoints[p + 1],
-                                strokeWidth = 2.5f
-                            )
-                        }
+            // Draw Paths
+            val pointsCount = buffer.size
+            val stepX = if (pointsCount > 1) width / (pointsCount - 1) else width
+
+            // Number of axes to draw (some sensors have 1, some have 3)
+            val numAxes = buffer.firstOrNull()?.values?.size ?: 0
+
+            for (axis in 0 until numAxes) {
+                val color = axisColors.getOrElse(axis % axisColors.size) { BentoGreenVibrant }
+                val pathPoints = mutableListOf<Offset>()
+
+                for (i in buffer.indices) {
+                    val frameValues = buffer[i].values
+                    if (axis < frameValues.size) {
+                        val v = frameValues[axis]
+                        val normalized = (v - visibleMin) / visibleRange
+                        val mappedY = height - (normalized * height).toFloat()
+                        val posX = i * stepX
+                        pathPoints.add(Offset(posX, mappedY))
                     }
+                }
+
+                if (pathPoints.size >= 2) {
+                    for (p in 0 until pathPoints.size - 1) {
+                        drawLine(
+                            color = color,
+                            start = pathPoints[p],
+                            end = pathPoints[p + 1],
+                            strokeWidth = 3f
+                        )
+                    }
+                } else if (pathPoints.size == 1) {
+                    drawCircle(
+                        color = color,
+                        radius = 3f,
+                        center = pathPoints[0]
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+fun NetraMetricRow(buffer: List<RawSensorReading>) {
+    if (buffer.isEmpty()) return
+
+    val allValues = buffer.flatMap { it.values.toList() }
+    val primaryVal = buffer.lastOrNull()?.values?.firstOrNull() ?: 0f
+    val minVal = allValues.minOrNull() ?: primaryVal
+    val maxVal = allValues.maxOrNull() ?: primaryVal
+    val avgVal = if (allValues.isNotEmpty()) allValues.average().toFloat() else primaryVal
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        NetraMetricItem("CURRENT", "%.2f".format(primaryVal))
+        NetraMetricItem("MIN", "%.2f".format(minVal))
+        NetraMetricItem("MAX", "%.2f".format(maxVal))
+        NetraMetricItem("AVG", "%.2f".format(avgVal))
+    }
+}
+
+@Composable
+fun NetraMetricItem(label: String, value: String) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(NetraDarkSurface)
+            .border(1.dp, NetraDarkBorder, RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = label,
+            color = NetraDarkTextMuted,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+        Text(
+            text = value,
+            color = NetraDarkTextPrimary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+fun NetraSessionInfo(latestReading: RawSensorReading?, bufferSize: Int) {
+    val timeFormatter = remember { SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()) }
+    val timestamp = latestReading?.timestamp?.let { timeFormatter.format(Date(it)) } ?: "--"
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(NetraDarkSurface)
+            .border(1.dp, NetraDarkBorder, RoundedCornerShape(12.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        InfoRow(label = "Sensor", value = latestReading?.name ?: "None")
+        InfoRow(label = "Mode", value = "Foreground")
+        InfoRow(label = "Buffer Size", value = "$bufferSize samples")
+        InfoRow(label = "Last Update", value = timestamp)
+    }
+}
+
+@Composable
+fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = NetraDarkTextMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = value,
+            color = NetraDarkTextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }

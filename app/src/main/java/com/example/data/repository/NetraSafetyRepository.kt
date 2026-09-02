@@ -213,19 +213,6 @@ class NetraSafetyRepository(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    suspend fun triggerSampleEvent(title: String, riskLevel: SafetyRiskLevel, score: Int, desc: String) {
-        logActivity(
-            moduleName = "Test Engine",
-            eventName = "TEST_VERIFICATION",
-            severity = "INFORMATION",
-            riskLevel = riskLevel,
-            riskScore = score,
-            title = title,
-            description = desc,
-            aiRecommendation = "Verified hardware diagnostic event. Maintain standard safety precautions."
-        )
-    }
-
     suspend fun logActivity(
         moduleName: String,
         eventName: String,

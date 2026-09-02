@@ -74,7 +74,6 @@ import java.util.Locale
 @Composable
 fun ReportsScreen(
     eventLogs: List<SafetyEventEntity>,
-    onTriggerTestEvent: (String, SafetyRiskLevel, Int, String) -> Unit,
     onClearLogs: () -> Unit,
     onExportTxt: ((Long, (Boolean, String) -> Unit) -> Unit),
     onExportCsv: ((Long, (Boolean, String) -> Unit) -> Unit),
@@ -247,90 +246,6 @@ fun ReportsScreen(
             }
         }
 
-        // Action Buttons: Run Test Trigger
-        item {
-            Button(
-                onClick = {
-                    onTriggerTestEvent(
-                        "Verified High Magnetic Field Anomaly",
-                        SafetyRiskLevel.WARNING,
-                        68,
-                        "Magnetometer magnitude spiked to 118.5 µT. Hardware source verified."
-                    )
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = BentoGreenPrimary, contentColor = Color.White),
-                shape = CircleShape,
-                modifier = Modifier.fillMaxWidth().testTag("trigger_test_log_button")
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Trigger Test Event Log", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        // Filter Chips Bar
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filterOptions) { filter ->
-                    val count = when (filter) {
-                        "All" -> eventLogs.size
-                        "Emergency" -> eventLogs.count { it.riskLevel.equals("EMERGENCY", ignoreCase = true) || it.severity.equals("CRITICAL", ignoreCase = true) }
-                        "Warning" -> eventLogs.count { it.riskLevel.equals("WARNING", ignoreCase = true) || it.severity.equals("WARNING", ignoreCase = true) }
-                        else -> eventLogs.count { it.moduleName.contains(filter, ignoreCase = true) || it.eventType.contains(filter, ignoreCase = true) }
-                    }
-                    FilterChip(
-                        selected = selectedFilter == filter,
-                        onClick = { selectedFilter = filter },
-                        label = { Text("$filter ($count)") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = BentoHeroCardBg,
-                            selectedLabelColor = BentoGreenPrimary,
-                            containerColor = BentoCardBg,
-                            labelColor = BentoTextSecondary
-                        ),
-                        shape = CircleShape
-                    )
-                }
-            }
-        }
-
-
-        // Empty state
-        if (filteredLogs.isEmpty()) {
-            item {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 40.dp)
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.EventNote, contentDescription = null, tint = BentoTextMuted, modifier = Modifier.height(48.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = if (filteredLogsByDate.isEmpty()) "No records available for the selected date." else "No event logs match the current criteria.",
-                            color = BentoTextMuted,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = "Tap 'Trigger Test Event Log' above to generate a verified log.",
-                            color = BentoTextSecondary,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        // Record Counter
-        item {
-            Text(
-                text = "Showing ${filteredLogs.take(visibleLogsCount).size} of ${filteredLogs.size} records",
-                color = BentoTextMuted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-        }
 
         // Event List Cards
         items(filteredLogs.take(visibleLogsCount), key = { it.id }) { event ->
