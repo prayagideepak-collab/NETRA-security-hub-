@@ -465,17 +465,10 @@ class MotionIntelligenceEngine(
                 candidateCategory = MotionCategory.WALKING
                 candidateConfidence = if (isStepFresh) MotionConfidence.HIGH else MotionConfidence.MEDIUM
             }
-            // Stationary / Standing: very low variance
+            // Stationary: very low variance
             variance < 0.35f -> {
-                val stationaryDuration = now - continuousStationaryStartTime
-                if (stationaryDuration < 900000L) { // Within 15 min of user activity -> Standing
-                    candidateCategory = MotionCategory.STANDING
-                    candidateConfidence = MotionConfidence.MEDIUM
-                } else {
-                    // Unattended phone resting on desk -> Unknown / Idle
-                    candidateCategory = MotionCategory.UNKNOWN
-                    candidateConfidence = MotionConfidence.LOW
-                }
+                candidateCategory = MotionCategory.UNKNOWN
+                candidateConfidence = MotionConfidence.LOW
             }
             else -> {
                 candidateCategory = MotionCategory.UNKNOWN
@@ -490,7 +483,12 @@ class MotionIntelligenceEngine(
         } else {
             if (candidateCategory == pendingCategory) {
                 candidateConsecutiveCount++
-                if (candidateConsecutiveCount >= 2 || currentCategory == MotionCategory.UNKNOWN) {
+                val requiredCount = when (candidateCategory) {
+                    MotionCategory.RUNNING -> 5
+                    MotionCategory.WALKING -> 3
+                    else -> 2
+                }
+                if (candidateConsecutiveCount >= requiredCount) {
                     applyCategoryTransition(candidateCategory, candidateConfidence, now)
                     candidateConsecutiveCount = 0
                     if (candidateCategory != MotionCategory.STANDING) {

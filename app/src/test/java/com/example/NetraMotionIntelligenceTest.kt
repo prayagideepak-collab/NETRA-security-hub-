@@ -51,8 +51,17 @@ class NetraMotionIntelligenceTest {
     @Test
     fun testC_StepApiAvailable_IncrementsActualStepCount() {
         val now = System.currentTimeMillis()
+        
+        // Enter WALKING state first
+        for (i in 0 until 15) {
+            val v = if (i % 2 == 0) 11.5f else 8.5f
+            motionEngine.processSensorReading(
+                RawSensorReading("sensor_1", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0f, v, 0f), "m/s²", now + i * 50L)
+            )
+        }
+        
         motionEngine.processSensorReading(
-            RawSensorReading("sensor_18", "Step Detector", SensorCategory.MOTION, floatArrayOf(1.0f), "steps", now)
+            RawSensorReading("sensor_18", "Step Detector", SensorCategory.MOTION, floatArrayOf(1.0f), "steps", now + 1000L)
         )
         val state = motionEngine.motionState.value
         assertEquals(1, state.walkingStats.steps)
@@ -89,9 +98,9 @@ class NetraMotionIntelligenceTest {
         assertEquals(MotionCategory.RUNNING, state.currentMotionCategory)
     }
 
-    // F. Standing detected
+    // F. Stationary -> Unknown (No Fabricated Standing)
     @Test
-    fun testF_StandingDetected_WithLowVariance() {
+    fun testF_Stationary_DefaultsToUnknownWithoutFabricatedStanding() {
         val now = System.currentTimeMillis()
         // Feed 15 stable accel samples (1g = 9.8 m/s² ± 0.05)
         for (i in 0 until 15) {
@@ -100,7 +109,7 @@ class NetraMotionIntelligenceTest {
             )
         }
         val state = motionEngine.motionState.value
-        assertEquals(MotionCategory.STANDING, state.currentMotionCategory)
+        assertEquals(MotionCategory.UNKNOWN, state.currentMotionCategory)
     }
 
     // G. Driving below 20 km/h (e.g. 14 km/h) -> Not Driving
@@ -155,26 +164,26 @@ class NetraMotionIntelligenceTest {
         }
         assertEquals(MotionCategory.WALKING, motionEngine.motionState.value.currentMotionCategory)
 
-        // 2. Transition to Standing (low variance)
+        // 2. Transition to Stationary/Unknown (low variance)
         for (i in 0 until 40) {
             motionEngine.processSensorReading(
                 RawSensorReading("sensor_1", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0.01f, 9.80f, 0.01f), "m/s²", now + 1000L + i * 50L)
             )
         }
-        assertEquals(MotionCategory.STANDING, motionEngine.motionState.value.currentMotionCategory)
+        assertEquals(MotionCategory.UNKNOWN, motionEngine.motionState.value.currentMotionCategory)
     }
 
     // K. Sensor Noise
     @Test
     fun testK_SensorNoise_SingleSpikeDoesNotFlutterConfirmedState() {
         val now = System.currentTimeMillis()
-        // Establish standing with 30 stable samples
+        // Establish stationary/unknown with 30 stable samples
         for (i in 0 until 30) {
             motionEngine.processSensorReading(
                 RawSensorReading("sensor_1", "Accelerometer", SensorCategory.MOTION, floatArrayOf(0.01f, 9.80f, 0.01f), "m/s²", now + i * 50L)
             )
         }
-        assertEquals(MotionCategory.STANDING, motionEngine.motionState.value.currentMotionCategory)
+        assertEquals(MotionCategory.UNKNOWN, motionEngine.motionState.value.currentMotionCategory)
 
         // 1 noisy sample
         motionEngine.processSensorReading(
@@ -182,7 +191,7 @@ class NetraMotionIntelligenceTest {
         )
         // Hysteresis filter ensures confirmed state does not flutter on single sample
         val state = motionEngine.motionState.value
-        assertEquals(MotionCategory.STANDING, state.currentMotionCategory)
+        assertEquals(MotionCategory.UNKNOWN, state.currentMotionCategory)
     }
 
     // L. User Profile & Biomechanical Stride
