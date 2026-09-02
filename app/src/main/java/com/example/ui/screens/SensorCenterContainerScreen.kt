@@ -26,14 +26,12 @@ import com.example.data.model.SensorFusionState
 import com.example.ui.MainViewModel
 import com.example.ui.theme.*
 
-import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 
 enum class SensorCenterSubTab(val title: String, val icon: ImageVector) {
     SAFETY_ENGINE("Safety Engine", Icons.Default.Shield),
     LIVE_SENSORS("Live Telemetry", Icons.Default.Sensors),
-    MOTION_INTELLIGENCE("Motion & Activity", Icons.Default.DirectionsWalk),
     TAMPER_SHIELD("Tamper Shield", Icons.Default.Security),
     AI_FUSION("AI Fusion", Icons.Default.Hub),
     HEALTH_CENTER("Health Center", Icons.Default.HealthAndSafety),
@@ -106,9 +104,6 @@ fun SensorCenterContainerScreen(
                     capabilities = capabilities,
                     liveReadings = liveReadings,
                     watchdogStates = watchdogStates
-                )
-                SensorCenterSubTab.MOTION_INTELLIGENCE -> MotionIntelligenceScreen(
-                    viewModel = viewModel
                 )
                 SensorCenterSubTab.TAMPER_SHIELD -> SensorDashboardScreen(
                     viewModel = viewModel

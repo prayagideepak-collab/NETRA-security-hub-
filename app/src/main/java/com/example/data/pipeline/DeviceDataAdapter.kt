@@ -11,7 +11,6 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.BatteryManager as AndroidBatteryManager
 import android.os.PowerManager
-import com.example.data.model.MotionCategory
 import com.example.util.LoggingManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

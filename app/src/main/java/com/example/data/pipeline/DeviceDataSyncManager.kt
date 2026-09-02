@@ -1,11 +1,8 @@
 package com.example.data.pipeline
 
 import android.content.Context
-import com.example.data.db.DailyMotionSummaryEntity
 import com.example.data.db.NetraDatabase
 import com.example.data.db.SafetyEventEntity
-import com.example.data.engine.MotionIntelligenceEngine
-import com.example.data.model.MotionCategory
 import com.example.data.repository.NetraSafetyRepository
 import com.example.util.LoggingManager
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +21,6 @@ import java.util.Locale
  */
 class DeviceDataSyncManager(
     private val context: Context,
-    private val motionEngine: MotionIntelligenceEngine? = null,
     private val repository: NetraSafetyRepository? = null
 ) {
     private val db = NetraDatabase.getInstance(context)
@@ -120,13 +116,9 @@ class DeviceDataSyncManager(
                 }
             }
 
-            // 2. Perform 7-day retention pruning across Motion & Safety stores
+            // 2. Perform 7-day retention pruning across Safety stores
             val sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000L)
             db.safetyEventDao().pruneOldResolvedEvents(sevenDaysAgo)
-            db.motionDao().pruneOldSummaries()
-            db.motionDao().pruneOldEvents()
-            db.motionDao().pruneOldRouteSessions()
-            db.motionDao().pruneOldRouteEvents()
 
             // 3. Mark last sync timestamp
             _lastSyncTimestamp.value = now
@@ -161,10 +153,6 @@ class DeviceDataSyncManager(
             // 7-day retention cleanup
             val sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000L)
             db.safetyEventDao().pruneOldResolvedEvents(sevenDaysAgo)
-            db.motionDao().pruneOldSummaries()
-            db.motionDao().pruneOldEvents()
-            db.motionDao().pruneOldRouteSessions()
-            db.motionDao().pruneOldRouteEvents()
 
             _lastSyncTimestamp.value = now
             prefs.edit().putLong(KEY_LAST_SYNC_MS, now).apply()

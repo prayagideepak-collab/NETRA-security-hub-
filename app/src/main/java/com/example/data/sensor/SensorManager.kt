@@ -34,7 +34,6 @@ class SensorManager(
     private val sensorObservers: SensorObservers = SensorObservers(context),
     val fusionEngine: SensorFusionEngine = SensorFusionEngine(context),
     val healthCenterEngine: HealthCenterEngine = HealthCenterEngine(context),
-    val motionIntelligenceEngine: com.example.data.engine.MotionIntelligenceEngine = com.example.data.engine.MotionIntelligenceEngine(context),
     val batteryManager: BatteryManager = BatteryManager(context),
     private val powerManagerEngine: com.example.data.engine.PowerManagerEngine = com.example.data.engine.PowerManagerEngine(),
     private val settingsRepository: SettingsRepository = SettingsRepository(context),
@@ -327,9 +326,6 @@ class SensorManager(
             )
         }
         updateThermalState(finalFusion.batteryTempC)
-        
-        // Forward to Motion Intelligence Engine
-        motionIntelligenceEngine.processSensorReading(enrichedReading)
 
         // Buffering for health center update
         readingBuffer.add(enrichedReading)

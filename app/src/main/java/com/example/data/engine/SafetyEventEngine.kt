@@ -4,7 +4,6 @@ import android.content.Context
 import com.example.data.db.NetraDatabase
 import com.example.data.db.SafetyEventDao
 import com.example.data.db.SafetyEventEntity
-import com.example.data.model.MotionConfidence
 import com.example.data.model.SafetyRiskLevel
 import com.example.data.model.SensorFusionState
 import com.example.util.LoggingManager
@@ -25,11 +24,17 @@ enum class SafetySeverity {
     CRITICAL
 }
 
+enum class SafetyConfidence {
+    LOW,
+    MEDIUM,
+    HIGH
+}
+
 data class SafetyEngineEvent(
     val eventId: String,
     val eventType: String,
     val severity: SafetySeverity,
-    val confidence: MotionConfidence,
+    val confidence: SafetyConfidence,
     val sourceSensors: List<String>,
     val triggerValue: String,
     val thresholdValue: String,
@@ -67,7 +72,7 @@ class SafetyEventEngine(
                         eventId = UUID.randomUUID().toString(),
                         eventType = "HIGH_HEAT_CRITICAL",
                         severity = SafetySeverity.CRITICAL,
-                        confidence = MotionConfidence.HIGH,
+                        confidence = SafetyConfidence.HIGH,
                         sourceSensors = listOf("Battery Thermal Subsystem"),
                         triggerValue = "%.1f°C".format(temp),
                         thresholdValue = "${thermalThresholdC}°C",
@@ -82,7 +87,7 @@ class SafetyEventEngine(
                         eventId = UUID.randomUUID().toString(),
                         eventType = "HIGH_HEAT_WARNING",
                         severity = SafetySeverity.WARNING,
-                        confidence = MotionConfidence.HIGH,
+                        confidence = SafetyConfidence.HIGH,
                         sourceSensors = listOf("Battery Thermal Subsystem"),
                         triggerValue = "%.1f°C".format(temp),
                         thresholdValue = "${thermalThresholdC}°C",
@@ -97,7 +102,7 @@ class SafetyEventEngine(
                         eventId = UUID.randomUUID().toString(),
                         eventType = "HEAT_ATTENTION",
                         severity = SafetySeverity.ATTENTION,
-                        confidence = MotionConfidence.MEDIUM,
+                        confidence = SafetyConfidence.MEDIUM,
                         sourceSensors = listOf("Battery Thermal Subsystem"),
                         triggerValue = "%.1f°C".format(temp),
                         thresholdValue = "40.0°C",
@@ -116,7 +121,7 @@ class SafetyEventEngine(
                 eventId = UUID.randomUUID().toString(),
                 eventType = "MAGNETIC_ANOMALY",
                 severity = SafetySeverity.WARNING,
-                confidence = MotionConfidence.HIGH,
+                confidence = SafetyConfidence.HIGH,
                 sourceSensors = listOf("Magnetometer (TYPE_MAGNETIC_FIELD)"),
                 triggerValue = "%.1f µT".format(fusionState.magneticMagnitudeuT),
                 thresholdValue = "100.0 µT",
@@ -133,7 +138,7 @@ class SafetyEventEngine(
                 eventId = UUID.randomUUID().toString(),
                 eventType = "PHYSICAL_IMPACT",
                 severity = SafetySeverity.WARNING,
-                confidence = MotionConfidence.HIGH,
+                confidence = SafetyConfidence.HIGH,
                 sourceSensors = listOf("Accelerometer", "Gyroscope"),
                 triggerValue = "%.1f G".format(fusionState.impactGForce),
                 thresholdValue = "2.2 G",
@@ -150,7 +155,7 @@ class SafetyEventEngine(
                 eventId = UUID.randomUUID().toString(),
                 eventType = "CHARGING_ANOMALY",
                 severity = SafetySeverity.CRITICAL,
-                confidence = MotionConfidence.HIGH,
+                confidence = SafetyConfidence.HIGH,
                 sourceSensors = listOf("Battery Power HAL"),
                 triggerValue = "${fusionState.chargingVoltageMv} mV / %.1f°C".format(fusionState.batteryTempC),
                 thresholdValue = "4400 mV / ${thermalThresholdC}°C",
@@ -205,7 +210,7 @@ class SafetyEventEngine(
                         isVerifiedHardwareEvent = true,
                         moduleName = "SafetyEventEngine",
                         severity = event.severity.name,
-                        aiConfidence = if (event.confidence == MotionConfidence.HIGH) 0.95f else 0.70f
+                        aiConfidence = if (event.confidence == SafetyConfidence.HIGH) 0.95f else 0.70f
                     )
                 )
             } catch (_: Exception) {}

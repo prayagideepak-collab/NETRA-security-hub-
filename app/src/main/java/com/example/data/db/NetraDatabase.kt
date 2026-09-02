@@ -12,11 +12,6 @@ import com.example.data.db.SafetyEventDao
 import com.example.data.db.SafetyEventEntity
 import com.example.data.db.SystemAuditDao
 import com.example.data.db.SystemAuditEntity
-import com.example.data.db.DailyMotionSummaryEntity
-import com.example.data.db.MotionEventEntity
-import com.example.data.db.MotionRouteSessionEntity
-import com.example.data.db.RouteEventEntity
-import com.example.data.db.MotionDao
 import com.example.nasre.db.DiagnosticLogEntity
 import com.example.nasre.db.HealthMonitorEntity
 import com.example.nasre.db.NasreDao
@@ -32,13 +27,9 @@ import com.example.nasre.db.RootCauseEntity
         HealthMonitorEntity::class,
         DiagnosticLogEntity::class,
         ResourceOptimizerEntity::class,
-        RootCauseEntity::class,
-        DailyMotionSummaryEntity::class,
-        MotionEventEntity::class,
-        MotionRouteSessionEntity::class,
-        RouteEventEntity::class
+        RootCauseEntity::class
     ], 
-    version = 17, 
+    version = 18, 
     exportSchema = false
 )
 abstract class NetraDatabase : RoomDatabase() {
@@ -47,7 +38,6 @@ abstract class NetraDatabase : RoomDatabase() {
     abstract fun serviceStateAuditDao(): ServiceStateAuditDao
     abstract fun unifiedEventDao(): UnifiedEventDao
     abstract fun nasreDao(): NasreDao
-    abstract fun motionDao(): MotionDao
 
     companion object {
         @Volatile

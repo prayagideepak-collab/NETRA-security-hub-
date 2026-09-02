@@ -19,9 +19,6 @@ import com.example.data.model.SafetyRiskLevel
 import com.example.data.model.SensorCapabilityInfo
 import com.example.data.model.SensorCategory
 import com.example.data.model.SensorFusionState
-import com.example.data.model.DailyMotionDashboardState
-import com.example.data.model.MotionCategory
-import com.example.data.model.UserProfile
 import com.example.data.repository.NetraSafetyRepository
 import com.example.data.repository.SettingsRepository
 import com.example.data.sensor.SensorDiagnosticStatus
@@ -219,21 +216,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val developerPinFailedAttempts: StateFlow<Int> = settingsRepository.developerPinFailedAttempts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val developerPinRecoveryKey: StateFlow<String?> = settingsRepository.developerPinRecoveryKey.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // Motion Intelligence & Daily Activity Dashboard State
-    val motionDashboardState: StateFlow<DailyMotionDashboardState> = repository.sensorManager.motionIntelligenceEngine.motionState
-    val availableMotionHistoryDates: StateFlow<List<String>> = repository.sensorManager.motionIntelligenceEngine.availableHistoryDates
-    val selectedMotionDate: StateFlow<String?> = repository.sensorManager.motionIntelligenceEngine.selectedDateKey
-
     val userDobEpochMs: StateFlow<Long?> = settingsRepository.userDobEpochMs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val userHeightCm: StateFlow<Float?> = settingsRepository.userHeightCm.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val userHeightUnit: StateFlow<String> = settingsRepository.userHeightUnit.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "cm")
     val userGender: StateFlow<String> = settingsRepository.userGender.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val customStepTarget: StateFlow<Int?> = settingsRepository.customStepTarget.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val customStandingTargetSec: StateFlow<Long?> = settingsRepository.customStandingTargetSec.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    fun selectMotionHistoryDate(dateKey: String?) {
-        repository.sensorManager.motionIntelligenceEngine.selectDateForView(dateKey)
-    }
 
     fun saveUserProfile(dobEpochMs: Long?, heightCm: Float?, heightUnit: String, gender: String) {
         viewModelScope.launch {
