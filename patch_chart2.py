@@ -1,4 +1,10 @@
-package com.example.ui.components
+import re
+
+with open('app/src/main/java/com/example/ui/components/SensorWaveformChart.kt', 'r') as f:
+    content = f.read()
+
+# Change it back to original SensorWaveformChart
+content = """package com.example.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -172,3 +178,8 @@ fun SensorWaveformChart(
         }
     }
 }
+"""
+
+with open('app/src/main/java/com/example/ui/components/SensorWaveformChart.kt', 'w') as f:
+    f.write(content)
+

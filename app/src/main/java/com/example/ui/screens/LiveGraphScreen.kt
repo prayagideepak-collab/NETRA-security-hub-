@@ -1,24 +1,28 @@
 package com.example.ui.screens
 
+import android.hardware.Sensor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.FiberManualRecord
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.RawSensorReading
-import com.example.ui.components.SensorWaveformChart
+
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -36,12 +40,30 @@ import java.util.Locale
 
 @Composable
 fun LiveGraphScreen(
-    liveReadings: Map<String, RawSensorReading>,
+    state: LiveGraphState,
+    onSelectSensor: (Int) -> Unit,
+    onTogglePause: (Boolean) -> Unit,
+    onStartSession: () -> Unit,
+    onStopSession: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // True Only Rule: Filter only non-stale active live readings
-    val activeReadings = liveReadings.values.filter { !it.isStale(15000L) }
+    DisposableEffect(Unit) {
+        onStartSession()
+        onDispose {
+            onStopSession()
+        }
+    }
+
     val currentTimeStr = SimpleDateFormat("hh:mm:ss a", Locale.getDefault()).format(Date())
+    
+    // Calculate stats from buffer
+    val allRecordedValues = state.buffer.flatMap { it.values.toList() }
+    val primaryVal = state.buffer.lastOrNull()?.values?.firstOrNull() ?: 0f
+    val minVal = if (allRecordedValues.isNotEmpty()) allRecordedValues.minOrNull() ?: primaryVal else primaryVal
+    val maxVal = if (allRecordedValues.isNotEmpty()) allRecordedValues.maxOrNull() ?: primaryVal else primaryVal
+    val avgVal = if (allRecordedValues.isNotEmpty()) allRecordedValues.average().toFloat() else primaryVal
+
+    val latestReading = state.buffer.lastOrNull()
 
     LazyColumn(
         modifier = modifier
@@ -52,7 +74,7 @@ fun LiveGraphScreen(
     ) {
         item { Spacer(modifier = Modifier.height(4.dp)) }
 
-        // Header Title Card matching reference dashboard
+        // Header Title Card
         item {
             Box(
                 modifier = Modifier
@@ -90,61 +112,60 @@ fun LiveGraphScreen(
                                     Icon(
                                         imageVector = Icons.Default.FiberManualRecord,
                                         contentDescription = null,
-                                        tint = BentoGreenVibrant,
+                                        tint = if (state.isPaused) BentoAmber else BentoGreenVibrant,
                                         modifier = Modifier.size(8.dp)
                                     )
                                     Text(
-                                        text = "LIVE",
-                                        color = BentoGreenPrimary,
+                                        text = if (state.isPaused) "PAUSED" else "LIVE",
+                                        color = if (state.isPaused) BentoAmber else BentoGreenPrimary,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
                         }
-
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = "Last Update: $currentTimeStr",
                                 color = BentoTextSecondary,
                                 fontSize = 10.sp
                             )
-                            Text(
-                                text = "Data Age: 0.3s",
-                                color = BentoTextMuted,
-                                fontSize = 9.sp
-                            )
                         }
                     }
 
-                    Text(
-                        text = "Real-time Sensor Telemetry — Foreground Active Stream",
-                        color = BentoTextSecondary,
-                        fontSize = 12.sp
-                    )
-
-                    // Live Status Sub-Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(BentoHeroCardBg)
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = BentoGreenVibrant, modifier = Modifier.size(10.dp))
-                            Text("All Systems Normal", color = BentoGreenPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    // Sensor Selection Row
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(state.availableSensors) { sensorType ->
+                            val isSelected = state.selectedSensorType == sensorType
+                            val sensorName = when(sensorType) {
+                                Sensor.TYPE_ACCELEROMETER -> "ACCEL"
+                                Sensor.TYPE_GYROSCOPE -> "GYRO"
+                                Sensor.TYPE_MAGNETIC_FIELD -> "MAG"
+                                Sensor.TYPE_LIGHT -> "LIGHT"
+                                else -> "UNKNOWN"
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSelected) BentoGreenPrimary.copy(alpha = 0.2f) else BentoHeroCardBg)
+                                    .border(1.dp, if (isSelected) BentoGreenPrimary else BentoBorder, RoundedCornerShape(12.dp))
+                                    .clickable { onSelectSensor(sensorType) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = sensorName,
+                                    color = if (isSelected) BentoGreenPrimary else BentoTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
-                        Text("Monitoring: ${activeReadings.size} Sensors", color = BentoTextSecondary, fontSize = 11.sp)
-                        Text("Sampling: Adaptive", color = BentoTextMuted, fontSize = 11.sp)
                     }
                 }
             }
         }
 
-        if (activeReadings.isEmpty()) {
+        if (latestReading == null) {
             item {
                 Box(
                     modifier = Modifier
@@ -166,34 +187,19 @@ fun LiveGraphScreen(
                             modifier = Modifier.size(36.dp)
                         )
                         Text(
-                            text = "LIVE TELEMETRY STREAM UNAVAILABLE",
+                            text = if (state.isPaused) "Paused" else "Waiting for live sensor data",
                             color = BentoTextPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "No active sensor streams detected. Open Security Hub or ensure device sensors are operational.",
-                            color = BentoTextMuted,
-                            fontSize = 11.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
             }
         } else {
-            items(activeReadings, key = { it.sensorId }) { reading ->
-                val primaryVal = reading.values.firstOrNull() ?: 0f
-                val minVal = if (reading.values.isNotEmpty()) reading.values.minOrNull() ?: primaryVal else primaryVal
-                val maxVal = if (reading.values.isNotEmpty()) reading.values.maxOrNull() ?: primaryVal else primaryVal
-                val avgVal = if (reading.values.isNotEmpty()) reading.values.average().toFloat() else primaryVal
-
-                // Assign accent color based on sensor category / type
-                val accentColor = when {
-                    reading.name.contains("Magnetic", true) -> Color(0xFFB388FF) // Purple
-                    reading.name.contains("Accel", true) -> BentoGreenPrimary // Green
-                    reading.name.contains("Gyro", true) -> Color(0xFF00E5FF) // Cyan/Blue
-                    reading.name.contains("Thermal", true) || reading.name.contains("Temp", true) -> Color(0xFFFF9100) // Orange
-                    reading.name.contains("Light", true) -> Color(0xFFFFEA00) // Yellow
+            item {
+                val accentColor = when (latestReading.category) {
+                    com.example.data.model.SensorCategory.MOTION -> BentoGreenPrimary
+                    com.example.data.model.SensorCategory.ENVIRONMENTAL -> Color(0xFF00E5FF)
                     else -> BentoGreenPrimary
                 }
 
@@ -221,21 +227,30 @@ fun LiveGraphScreen(
                                         .background(accentColor)
                                 )
                                 Text(
-                                    text = reading.name.uppercase(),
+                                    text = latestReading.name.uppercase(),
                                     color = accentColor,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.sp
                                 )
                             }
-                            Text(
-                                text = "Unit: ${reading.unit}",
-                                color = BentoTextMuted,
-                                fontSize = 11.sp
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "Unit: ${latestReading.unit}",
+                                    color = BentoTextMuted,
+                                    fontSize = 11.sp
+                                )
+                                IconButton(onClick = { onTogglePause(!state.isPaused) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(
+                                        imageVector = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                        contentDescription = if (state.isPaused) "Resume" else "Pause",
+                                        tint = BentoTextPrimary
+                                    )
+                                }
+                            }
                         }
 
-                        // 4 Metric Tiles: Current | Min | Max | Avg (matching reference layout)
+                        // 4 Metric Tiles: Current | Min | Max | Avg
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -244,22 +259,21 @@ fun LiveGraphScreen(
                                 .padding(10.dp),
                             horizontalArrangement = Arrangement.SpaceAround
                         ) {
-                            MetricTile("CURRENT", "%.2f %s".format(primaryVal, reading.unit), accentColor)
-                            MetricTile("MIN", "%.2f %s".format(minVal, reading.unit), BentoTextSecondary)
-                            MetricTile("MAX", "%.2f %s".format(maxVal, reading.unit), BentoRed)
-                            MetricTile("AVG", "%.2f %s".format(avgVal, reading.unit), BentoGreenPrimary)
+                            MetricTile("CURRENT", "%.2f".format(primaryVal), accentColor)
+                            MetricTile("MIN", "%.2f".format(minVal), BentoTextSecondary)
+                            MetricTile("MAX", "%.2f".format(maxVal), BentoRed)
+                            MetricTile("AVG", "%.2f".format(avgVal), BentoGreenPrimary)
                         }
 
-                        // Centralized Waveform Chart
-                        SensorWaveformChart(
-                            values = reading.values,
-                            unit = reading.unit
+                        // We pass the buffer to our chart to draw
+                        LiveGraphWaveformChart(
+                            buffer = state.buffer,
+                            unit = latestReading.unit
                         )
                     }
                 }
             }
         }
-
         item { Spacer(modifier = Modifier.height(24.dp)) }
     }
 }
@@ -280,5 +294,79 @@ fun MetricTile(label: String, value: String, valueColor: Color) {
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+@Composable
+fun LiveGraphWaveformChart(
+    buffer: List<RawSensorReading>,
+    unit: String,
+    modifier: Modifier = Modifier
+) {
+    if (buffer.isEmpty()) return
+    
+    val lineColors = androidx.compose.runtime.remember { listOf(BentoGreenPrimary, BentoGreenVibrant, BentoAmber, BentoRed) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(BentoCardBg)
+            .border(1.dp, BentoBorder, RoundedCornerShape(18.dp))
+            .padding(12.dp)
+    ) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
+            val width = size.width
+            val height = size.height
+
+            // 1. Grid Lines
+            val gridStepX = width / 6
+            for (i in 1..5) {
+                drawLine(
+                    color = BentoBorder,
+                    start = androidx.compose.ui.geometry.Offset(gridStepX * i, 0f),
+                    end = androidx.compose.ui.geometry.Offset(gridStepX * i, height),
+                    strokeWidth = 1f
+                )
+            }
+            drawLine(
+                color = BentoBorder,
+                start = androidx.compose.ui.geometry.Offset(0f, height / 2),
+                end = androidx.compose.ui.geometry.Offset(width, height / 2),
+                strokeWidth = 1f
+            )
+
+            // 2. Render Rolling Buffer Waveform
+            if (buffer.isNotEmpty()) {
+                val pointsCount = buffer.size
+                val stepX = if (pointsCount > 1) width / (pointsCount - 1) else width
+                
+                for (axis in 0 until 3) {
+                    val color = lineColors.getOrElse(axis) { BentoGreenPrimary }
+                    val pathPoints = mutableListOf<androidx.compose.ui.geometry.Offset>()
+                    for (i in buffer.indices) {
+                        val frameValues = buffer[i].values
+                        if (axis < frameValues.size) {
+                            val v = frameValues[axis]
+                            val centerY = height / 2
+                            val mappedY = (centerY - (v * 2.5f)).coerceIn(4f, height - 4f)
+                            val posX = i * stepX
+                            pathPoints.add(androidx.compose.ui.geometry.Offset(posX, mappedY))
+                        }
+                    }
+
+                    if (pathPoints.size >= 2) {
+                        for (p in 0 until pathPoints.size - 1) {
+                            drawLine(
+                                color = color,
+                                start = pathPoints[p],
+                                end = pathPoints[p + 1],
+                                strokeWidth = 2.5f
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

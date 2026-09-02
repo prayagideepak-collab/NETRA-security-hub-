@@ -349,9 +349,16 @@ fun MainScreen(
                             riskAnalysis = riskAnalysis,
                             viewModel = viewModel
                         )
-                        NavigationTab.LIVE_GRAPH -> LiveGraphScreen(
-                            liveReadings = liveReadings
-                        )
+                        NavigationTab.LIVE_GRAPH -> {
+                            val liveGraphState by viewModel.liveGraphState.collectAsStateWithLifecycle()
+                            LiveGraphScreen(
+                                state = liveGraphState,
+                                onSelectSensor = { viewModel.selectLiveGraphSensor(it) },
+                                onTogglePause = { viewModel.setLiveGraphPaused(it) },
+                                onStartSession = { viewModel.startLiveGraphSession() },
+                                onStopSession = { viewModel.stopLiveGraphSession() }
+                            )
+                        }
                         NavigationTab.HISTORY_LOGS -> HistoryLogsContainerScreen(
                             eventLogs = eventLogs,
                             viewModel = viewModel

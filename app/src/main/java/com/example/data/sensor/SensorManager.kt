@@ -91,6 +91,27 @@ class SensorManager(
         )
     )
 
+    private val subscribers = MutableStateFlow<Map<Int, Set<String>>>(emptyMap())
+    private val sensorJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
+    
+    fun addSubscriber(sensorType: Int, subscriberId: String) {
+        val current = subscribers.value.toMutableMap()
+        val set = current.getOrDefault(sensorType, emptySet()).toMutableSet()
+        set.add(subscriberId)
+        current[sensorType] = set
+        subscribers.value = current
+        evaluateSensorStreams()
+    }
+    
+    fun removeSubscriber(sensorType: Int, subscriberId: String) {
+        val current = subscribers.value.toMutableMap()
+        val set = current.getOrDefault(sensorType, emptySet()).toMutableSet()
+        set.remove(subscriberId)
+        if (set.isEmpty()) current.remove(sensorType) else current[sensorType] = set
+        subscribers.value = current
+        evaluateSensorStreams()
+    }
+
     private val sequenceNumbers = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     init {
@@ -173,42 +194,13 @@ class SensorManager(
      */
     fun startMonitoring() {
         if (_isMonitoringActive.value) return
-
         if (job.isCancelled || !scope.coroutineContext[Job]!!.isActive) {
             job = Job()
             scope = CoroutineScope(Dispatchers.Default + job)
         }
-
         _isMonitoringActive.value = true
-
-        val supportedCapabilities = capabilityManager.getSupportedCapabilities()
-
-        // 1. Motion & Environmental Sensors
-        supportedCapabilities.forEach { cap ->
-            if (_monitoringEnabled.value[cap.type] == false) return@forEach
-            
-            val baseThrottle = _sensorThrottles.value[cap.type] ?: 150L
-            val thermalMultiplier = when (thermalState) {
-                ThermalState.NORMAL -> 1L
-                ThermalState.WARM -> 2L
-                ThermalState.HIGH -> 5L
-                ThermalState.THERMAL_PROTECTION -> 20L
-            }
-            val throttle = baseThrottle * thermalMultiplier
-
-            when (cap.type) {
-                Sensor.TYPE_ACCELEROMETER -> launchSensorStream(Sensor.TYPE_ACCELEROMETER, "Accelerometer", SensorCategory.MOTION, "m/s²", throttle)
-                Sensor.TYPE_GYROSCOPE -> launchSensorStream(Sensor.TYPE_GYROSCOPE, "Gyroscope", SensorCategory.MOTION, "rad/s", throttle)
-                Sensor.TYPE_STEP_COUNTER -> launchSensorStream(Sensor.TYPE_STEP_COUNTER, "Step Counter", SensorCategory.MOTION, "steps", 500L)
-                Sensor.TYPE_STEP_DETECTOR -> launchSensorStream(Sensor.TYPE_STEP_DETECTOR, "Step Detector", SensorCategory.MOTION, "pulse", 50L)
-                Sensor.TYPE_LIGHT -> launchSensorStream(Sensor.TYPE_LIGHT, "Ambient Light", SensorCategory.ENVIRONMENTAL, "Lux", throttle)
-                Sensor.TYPE_MAGNETIC_FIELD -> launchSensorStream(Sensor.TYPE_MAGNETIC_FIELD, "Magnetometer", SensorCategory.ENVIRONMENTAL, "µT", throttle)
-                Sensor.TYPE_PROXIMITY -> launchSensorStream(Sensor.TYPE_PROXIMITY, "Proximity", SensorCategory.ENVIRONMENTAL, "cm", throttle)
-                Sensor.TYPE_PRESSURE -> launchSensorStream(Sensor.TYPE_PRESSURE, "Barometer", SensorCategory.ENVIRONMENTAL, "hPa", throttle)
-                Sensor.TYPE_AMBIENT_TEMPERATURE -> launchSensorStream(Sensor.TYPE_AMBIENT_TEMPERATURE, "Ambient Temp", SensorCategory.ENVIRONMENTAL, "°C", throttle)
-                Sensor.TYPE_RELATIVE_HUMIDITY -> launchSensorStream(Sensor.TYPE_RELATIVE_HUMIDITY, "Humidity", SensorCategory.ENVIRONMENTAL, "%", throttle)
-            }
-        }
+        
+        evaluateSensorStreams()
 
         // 2. Battery & Power Stream
         batteryManager.startMonitoring()
@@ -218,14 +210,14 @@ class SensorManager(
                 handleIncomingReading(reading)
             }
         }
-
+        
         // 3. Thermal Subsystem Stream
         scope.launch {
             sensorObservers.observeThermalState().collect { reading ->
                 handleIncomingReading(reading)
             }
         }
-
+        
         // 4. GNSS / Location Stream
         scope.launch {
             sensorObservers.observeLocation().collect { reading ->
@@ -234,19 +226,62 @@ class SensorManager(
         }
     }
 
-    /**
-     * Pauses sensor streams to prevent power draw and resource leakage when lifecycle pauses/stops.
-     */
     fun stopMonitoring() {
         _isMonitoringActive.value = false
         batteryManager.stopMonitoring()
+        sensorJobs.values.forEach { it.cancel() }
+        sensorJobs.clear()
         job.cancel()
     }
 
-    private fun launchSensorStream(type: Int, name: String, category: SensorCategory, unit: String, refreshIntervalMs: Long) {
-        scope.launch {
-            sensorObservers.observeHardwareSensor(type, name, category, unit, refreshIntervalMs).collect { reading ->
-                handleIncomingReading(reading)
+    private fun evaluateSensorStreams() {
+        if (!_isMonitoringActive.value) {
+            sensorJobs.values.forEach { it.cancel() }
+            sensorJobs.clear()
+            return
+        }
+
+        val supportedCapabilities = capabilityManager.getSupportedCapabilities()
+        supportedCapabilities.forEach { cap ->
+            val isEnabledBySettings = _monitoringEnabled.value[cap.type] == true
+            val hasSubscribers = subscribers.value[cap.type]?.isNotEmpty() == true
+
+            val isCoreSafety = cap.type == Sensor.TYPE_ACCELEROMETER || cap.type == Sensor.TYPE_STEP_DETECTOR || cap.type == Sensor.TYPE_STEP_COUNTER
+            val shouldRun = (isEnabledBySettings && isCoreSafety) || hasSubscribers || isEnabledBySettings
+            
+            if (shouldRun && !sensorJobs.containsKey(cap.type)) {
+                val baseThrottle = _sensorThrottles.value[cap.type] ?: 150L
+                val thermalMultiplier = when (thermalState) {
+                    ThermalState.NORMAL -> 1L
+                    ThermalState.WARM -> 2L
+                    ThermalState.HIGH -> 5L
+                    ThermalState.THERMAL_PROTECTION -> 20L
+                }
+                val throttle = baseThrottle * thermalMultiplier
+                
+                val unit = when (cap.type) {
+                    Sensor.TYPE_ACCELEROMETER -> "m/s²"
+                    Sensor.TYPE_GYROSCOPE -> "rad/s"
+                    Sensor.TYPE_STEP_COUNTER -> "steps"
+                    Sensor.TYPE_STEP_DETECTOR -> "pulse"
+                    Sensor.TYPE_LIGHT -> "Lux"
+                    Sensor.TYPE_MAGNETIC_FIELD -> "µT"
+                    Sensor.TYPE_PROXIMITY -> "cm"
+                    Sensor.TYPE_PRESSURE -> "hPa"
+                    Sensor.TYPE_AMBIENT_TEMPERATURE -> "°C"
+                    Sensor.TYPE_RELATIVE_HUMIDITY -> "%"
+                    else -> "unknown"
+                }
+                
+                val j = scope.launch {
+                    sensorObservers.observeHardwareSensor(cap.type, cap.name, cap.category, unit, throttle).collect { reading ->
+                        handleIncomingReading(reading)
+                    }
+                }
+                sensorJobs[cap.type] = j
+            } else if (!shouldRun && sensorJobs.containsKey(cap.type)) {
+                sensorJobs[cap.type]?.cancel()
+                sensorJobs.remove(cap.type)
             }
         }
     }

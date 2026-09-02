@@ -122,6 +122,59 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val riskAnalysis: StateFlow<RiskAnalysisResult> = repository.riskAnalysis
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), RiskAnalysisResult(0, SafetyRiskLevel.SAFE, "", emptyList(), ""))
+    private val _liveGraphState = kotlinx.coroutines.flow.MutableStateFlow(com.example.ui.screens.LiveGraphState())
+    val liveGraphState: StateFlow<com.example.ui.screens.LiveGraphState> = _liveGraphState.asStateFlow()
+    
+    private val MAX_BUFFER_SIZE = 100
+    private var liveGraphBuffer = java.util.concurrent.ConcurrentLinkedDeque<com.example.data.model.RawSensorReading>()
+    private var liveGraphCollectionJob: kotlinx.coroutines.Job? = null
+    
+    fun selectLiveGraphSensor(sensorType: Int) {
+        if (_liveGraphState.value.selectedSensorType == sensorType) return
+        repository.sensorManager.removeSubscriber(_liveGraphState.value.selectedSensorType, "live_graph")
+        liveGraphBuffer.clear()
+        _liveGraphState.value = _liveGraphState.value.copy(selectedSensorType = sensorType, buffer = emptyList())
+        if (!_liveGraphState.value.isPaused) {
+            repository.sensorManager.addSubscriber(sensorType, "live_graph")
+        }
+    }
+    
+    fun setLiveGraphPaused(paused: Boolean) {
+        if (_liveGraphState.value.isPaused == paused) return
+        _liveGraphState.value = _liveGraphState.value.copy(isPaused = paused)
+        if (paused) {
+            repository.sensorManager.removeSubscriber(_liveGraphState.value.selectedSensorType, "live_graph")
+        } else {
+            repository.sensorManager.addSubscriber(_liveGraphState.value.selectedSensorType, "live_graph")
+        }
+    }
+    
+    fun startLiveGraphSession() {
+        if (!_liveGraphState.value.isPaused) {
+            repository.sensorManager.addSubscriber(_liveGraphState.value.selectedSensorType, "live_graph")
+        }
+        liveGraphCollectionJob?.cancel()
+        liveGraphCollectionJob = viewModelScope.launch {
+            repository.sensorManager.liveReadings.collect { readings ->
+                if (_liveGraphState.value.isPaused) return@collect
+                val selectedId = "sensor_${_liveGraphState.value.selectedSensorType}"
+                val reading = readings[selectedId]
+                if (reading != null && !reading.isStale(15000L)) {
+                    liveGraphBuffer.addLast(reading)
+                    if (liveGraphBuffer.size > MAX_BUFFER_SIZE) {
+                        liveGraphBuffer.removeFirst()
+                    }
+                    _liveGraphState.value = _liveGraphState.value.copy(buffer = liveGraphBuffer.toList())
+                }
+            }
+        }
+    }
+    
+    fun stopLiveGraphSession() {
+        repository.sensorManager.removeSubscriber(_liveGraphState.value.selectedSensorType, "live_graph")
+        liveGraphCollectionJob?.cancel()
+    }
+
     val liveReadings: StateFlow<Map<String, RawSensorReading>> = repository.liveReadings
 
     val sensorDiagnostics: StateFlow<List<SensorDiagnosticStatus>> = combine(
