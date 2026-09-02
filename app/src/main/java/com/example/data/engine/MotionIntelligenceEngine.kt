@@ -366,13 +366,10 @@ class MotionIntelligenceEngine(
         continuousStationaryStartTime = timestamp
 
         // Attribute step according to active classification
-        val strideM = userProfile.calculateStrideMeters()
         if (currentCategory == MotionCategory.RUNNING) {
             todayRunningSteps++
-            if (strideM != null) todayRunningDistanceM += (strideM * 1.25)
         } else {
             todayWalkingSteps++
-            if (strideM != null) todayWalkingDistanceM += strideM
         }
         updateDashboardState()
     }
@@ -386,13 +383,10 @@ class MotionIntelligenceEngine(
         val lastVal = lastHardwareStepCounterVal ?: rawCounter
         val deltaSteps = rawCounter - lastVal
         if (deltaSteps in 1..200) { // Sanity threshold
-            val strideM = userProfile.calculateStrideMeters()
             if (currentCategory == MotionCategory.RUNNING) {
                 todayRunningSteps += deltaSteps
-                if (strideM != null) todayRunningDistanceM += (deltaSteps.toDouble() * strideM * 1.25)
             } else {
                 todayWalkingSteps += deltaSteps
-                if (strideM != null) todayWalkingDistanceM += (deltaSteps.toDouble() * strideM)
             }
         }
         lastHardwareStepCounterVal = rawCounter
@@ -588,6 +582,13 @@ class MotionIntelligenceEngine(
                 intermediateEvents = events
             )
 
+            when (category) {
+                MotionCategory.WALKING -> todayWalkingDistanceM += (dist ?: 0.0)
+                MotionCategory.RUNNING -> todayRunningDistanceM += (dist ?: 0.0)
+                MotionCategory.DRIVING -> todayDrivingDistanceM += (dist ?: 0.0)
+                else -> {}
+            }
+
             todayRouteSessions.add(0, session)
             motionDao.upsertRouteSession(session.toEntity())
             updateDashboardState()
@@ -691,10 +692,6 @@ class MotionIntelligenceEngine(
             MotionCategory.RUNNING -> todayRunningDurationSec++
             MotionCategory.DRIVING -> {
                 todayDrivingDurationSec++
-                if (currentSpeedKmH > 0f) {
-                    val distanceThisSecM = (currentSpeedKmH * 1000.0) / 3600.0
-                    todayDrivingDistanceM += distanceThisSecM
-                }
             }
             MotionCategory.UNKNOWN -> {}
         }
@@ -772,8 +769,8 @@ class MotionIntelligenceEngine(
         val totalSteps = (todayWalkingSteps + todayRunningSteps).let { if (it > 0) it else null }
         val strideM = userProfile.calculateStrideMeters()
         
-        val walkingDist = if (todayWalkingDistanceM > 0.0) todayWalkingDistanceM else if (strideM != null && todayWalkingSteps > 0) todayWalkingSteps.toDouble() * strideM else null
-        val runningDist = if (todayRunningDistanceM > 0.0) todayRunningDistanceM else if (strideM != null && todayRunningSteps > 0) todayRunningSteps.toDouble() * strideM * 1.25 else null
+        val walkingDist = if (todayWalkingDistanceM > 0.0) todayWalkingDistanceM else null
+        val runningDist = if (todayRunningDistanceM > 0.0) todayRunningDistanceM else null
         val drivingDist = if (todayDrivingDistanceM > 0.0) todayDrivingDistanceM else null
 
         val totalDist = when {
