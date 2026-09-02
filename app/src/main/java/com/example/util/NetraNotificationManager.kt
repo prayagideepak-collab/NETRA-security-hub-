@@ -70,6 +70,21 @@ class NetraNotificationManager(private val context: Context) {
         }
     }
 
+    fun sendMotionAlert(title: String, message: String) {
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_MOTION)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        try {
+            NotificationManagerCompat.from(context).notify(System.currentTimeMillis().toInt(), builder.build())
+        } catch (e: SecurityException) {
+            // Permission might not be granted on API 33+ without runtime prompt
+        }
+    }
+
     fun updateMotionNotification(state: com.example.data.model.DailyMotionDashboardState) {
         val stepTarget = state.targetProgress.targetSteps
         val stepsDone = state.totalActivity.totalSteps

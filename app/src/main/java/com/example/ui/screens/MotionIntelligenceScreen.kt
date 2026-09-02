@@ -875,15 +875,59 @@ fun MotionTimelineCard(
                             }
 
                             if (session.startLocation != null || session.endLocation != null) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Column(modifier = Modifier.fillMaxWidth()) {
                                     if (session.startLocation != null) {
-                                        Text("Start GPS: %.4f, %.4f".format(session.startLocation.latitude, session.startLocation.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                        val srcStr = session.startLocation.source?.let { " via $it" } ?: ""
+                                        val accStr = session.startLocation.accuracyMeters?.let { " (±%.1fm)".format(it) } ?: ""
+                                        Text("Start: %.5f, %.5f$srcStr$accStr".format(session.startLocation.latitude, session.startLocation.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
                                     } else {
-                                        Text("Start GPS: Unavailable", style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                        Text("Start: Location snapshot unavailable", style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
                                     }
                                     if (session.endLocation != null) {
-                                        Text("End GPS: %.4f, %.4f".format(session.endLocation.latitude, session.endLocation.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                        val srcStr = session.endLocation.source?.let { " via $it" } ?: ""
+                                        val accStr = session.endLocation.accuracyMeters?.let { " (±%.1fm)".format(it) } ?: ""
+                                        Text("End:   %.5f, %.5f$srcStr$accStr".format(session.endLocation.latitude, session.endLocation.longitude), style = MaterialTheme.typography.labelSmall, color = BentoTextMuted, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+
+                            // Render Speed Metrics & Event Count
+                            if (session.averageSpeedKmH != null || session.maxSpeedKmH != null || (session.eventCount != null && session.eventCount > 0)) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    session.averageSpeedKmH?.let {
+                                        Text(
+                                            text = "Avg Speed: %.1f km/h".format(it),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BentoTextSecondary,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    session.maxSpeedKmH?.let {
+                                        Text(
+                                            text = "Max Speed: %.1f km/h".format(it),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BentoTextSecondary,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    session.eventCount?.let { count ->
+                                        if (count > 0) {
+                                            Text(
+                                                text = "Events: $count",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = BentoPurple,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
                                     }
                                 }
                             }

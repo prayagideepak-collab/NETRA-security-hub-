@@ -117,7 +117,10 @@ data class LocationSnapshot(
     val accuracyMeters: Float? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val isStartingPoint: Boolean = false,
-    val isEndingPoint: Boolean = false
+    val isEndingPoint: Boolean = false,
+    val source: String? = "fused",
+    val speedKmH: Float? = null,
+    val sensorContext: String? = null
 )
 
 enum class RouteEventClassification(val displayName: String) {
@@ -161,7 +164,10 @@ data class MotionRouteSession(
     val snapshotDistanceMeters: Double?,
     val isCumulativeDistance: Boolean = false,
     val locationAccuracyMeters: Float?,
-    val intermediateEvents: List<RouteEventRecord> = emptyList()
+    val intermediateEvents: List<RouteEventRecord> = emptyList(),
+    val averageSpeedKmH: Float? = null,
+    val maxSpeedKmH: Float? = null,
+    val eventCount: Int? = null
 )
 
 data class DailyMotionDashboardState(
@@ -185,7 +191,7 @@ data class DailyMotionDashboardState(
 
 object MotionTimeFormatter {
     fun formatTimelineDate(epochMs: Long): String {
-        val sdf = SimpleDateFormat("ddMMyyyy", Locale.getDefault())
+        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         return sdf.format(Date(epochMs))
     }
 

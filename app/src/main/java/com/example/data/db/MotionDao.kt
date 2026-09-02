@@ -57,6 +57,13 @@ data class MotionRouteSessionEntity(
     val endTimestamp: Long?,
     val snapshotDistanceMeters: Double?,
     val isCumulativeDistance: Boolean = false,
+    val startSource: String? = null,
+    val startSpeedKmH: Float? = null,
+    val endSource: String? = null,
+    val endSpeedKmH: Float? = null,
+    val averageSpeedKmH: Float? = null,
+    val maxSpeedKmH: Float? = null,
+    val eventCount: Int? = null,
     val lastUpdatedMs: Long = System.currentTimeMillis()
 )
 

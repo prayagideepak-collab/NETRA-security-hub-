@@ -38,7 +38,7 @@ import com.example.nasre.db.RootCauseEntity
         MotionRouteSessionEntity::class,
         RouteEventEntity::class
     ], 
-    version = 16, 
+    version = 17, 
     exportSchema = false
 )
 abstract class NetraDatabase : RoomDatabase() {

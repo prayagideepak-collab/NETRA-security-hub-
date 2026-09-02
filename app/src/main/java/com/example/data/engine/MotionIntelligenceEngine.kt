@@ -4,6 +4,8 @@ import android.content.Context
 import com.example.data.db.*
 import com.example.data.model.*
 import com.example.data.repository.SettingsRepository
+import com.example.util.NetraNotificationManager
+import com.example.util.NetraTtsManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.UUID
@@ -523,6 +525,37 @@ class MotionIntelligenceEngine(
         }
     }
 
+    private val speedHistoryList = java.util.concurrent.ConcurrentLinkedQueue<Pair<Long, Float>>()
+    private var lastSpeedDropEventTimeMs = 0L
+
+    private fun dispatchMotionTransitionAlert(
+        title: String,
+        message: String,
+        ttsMessage: String
+    ) {
+        // Send Android notification
+        scope.launch {
+            try {
+                val notificationManager = NetraNotificationManager(context)
+                notificationManager.sendMotionAlert(title, message)
+            } catch (e: Exception) {
+                // Ignore errors
+            }
+        }
+
+        // Send Speech/Voice announcement if enabled
+        scope.launch {
+            try {
+                if (settingsRepository.announceLocation.first() == true) {
+                    val ttsManager = NetraTtsManager(context)
+                    ttsManager.speakAlert(ttsMessage)
+                }
+            } catch (e: Exception) {
+                // Ignore errors
+            }
+        }
+    }
+
     private fun startNewRouteSession(category: MotionCategory, startTimeMs: Long) {
         val sessionId = UUID.randomUUID().toString()
         activeSessionId = sessionId
@@ -536,9 +569,21 @@ class MotionIntelligenceEngine(
         // Single-shot on-demand location fix for start point (Battery saving policy)
         scope.launch {
             val snapshot = locationSnapshotProvider.requestSingleLocationFix(isStartingPoint = true)
-            if (snapshot != null && activeSessionId == sessionId) {
-                activeSessionStartLocation = snapshot
+            if (activeSessionId == sessionId) {
+                if (snapshot != null) {
+                    activeSessionStartLocation = snapshot
+                }
                 updateDashboardState()
+
+                // Trigger start alert after location check completes
+                val locStr = snapshot?.let { "%.5f, %.5f".format(it.latitude, it.longitude) } ?: "Unavailable"
+                val speedVal = currentSpeedKmH
+                val speedStr = if (category == MotionCategory.DRIVING && speedVal != null) ", Speed: %.1f km/h".format(speedVal) else ""
+                dispatchMotionTransitionAlert(
+                    title = "NETRA: Motion Started",
+                    message = "${category.displayName} started at ${MotionTimeFormatter.formatDisplayTime(startTimeMs)}$speedStr. Location: $locStr.",
+                    ttsMessage = "${category.displayName} session started."
+                )
             }
         }
     }
@@ -566,18 +611,31 @@ class MotionIntelligenceEngine(
                 locationSnapshotProvider.calculateGeographicDistanceMeters(startLoc, endSnapshot)
             }
 
+            // Calculate Max Speed and Average Speed
+            val maxSpeed = if (events.isNotEmpty()) {
+                events.mapNotNull { it.currentSpeedKmH }.maxOrNull()
+            } else null
+            
+            val durationSec = ((endTimeMs - (sTime ?: endTimeMs)) / 1000L).coerceAtLeast(1L)
+            val avgSpeed = if (dist != null && dist > 0.0) {
+                ((dist / durationSec) * 3.6).toFloat() // m/s to km/h
+            } else null
+
             val session = MotionRouteSession(
                 sessionId = sessionId,
                 dateKey = activeDateKey,
                 activityCategory = category,
-                startTimeMs = sTime,
+                startTimeMs = sTime ?: endTimeMs,
                 endTimeMs = endTimeMs,
                 startLocation = startLoc,
                 endLocation = endSnapshot,
                 snapshotDistanceMeters = dist,
                 isCumulativeDistance = hasValidIntermediateEvents,
                 locationAccuracyMeters = endSnapshot?.accuracyMeters ?: startLoc?.accuracyMeters,
-                intermediateEvents = events
+                intermediateEvents = events,
+                averageSpeedKmH = avgSpeed,
+                maxSpeedKmH = maxSpeed,
+                eventCount = events.size
             )
 
             when (category) {
@@ -590,6 +648,15 @@ class MotionIntelligenceEngine(
             todayRouteSessions.add(0, session)
             motionDao.upsertRouteSession(session.toEntity())
             updateDashboardState()
+
+            // Trigger end alert
+            val locStr = endSnapshot?.let { "%.5f, %.5f".format(it.latitude, it.longitude) } ?: "Unavailable"
+            val distStr = MotionTimeFormatter.formatDistance(dist)
+            dispatchMotionTransitionAlert(
+                title = "NETRA: Motion Ended",
+                message = "${category.displayName} ended at ${MotionTimeFormatter.formatDisplayTime(endTimeMs)}. Distance: $distStr. Location: $locStr.",
+                ttsMessage = "${category.displayName} session ended, total distance $distStr."
+            )
         }
     }
 
@@ -600,20 +667,35 @@ class MotionIntelligenceEngine(
         accuracy: Float?,
         now: Long
     ) {
-        val prevSpeed = confirmedPreviousSpeedKmH
-        if (speed > prevSpeed || prevSpeed < 15.0f) {
-            confirmedPreviousSpeedKmH = speed
+        // Prune speed history older than 5 seconds
+        val fiveSecondsAgo = now - 5000L
+        val iterator = speedHistoryList.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (entry.first < fiveSecondsAgo) {
+                iterator.remove()
+            }
+        }
+
+        // Add current speed to history
+        speedHistoryList.add(Pair(now, speed))
+
+        // Only evaluate speed drops during an active Driving session
+        if (currentCategory != MotionCategory.DRIVING) {
             return
         }
 
-        val speedDelta = prevSpeed - speed
-        // Meaningful speed drop qualification: >=5 km/h delta or >=20% drop on >=20 km/h speed
-        val isSignificantDrop = speedDelta >= 5.0f || (prevSpeed >= 20.0f && (speedDelta / prevSpeed) >= 0.20f)
-        val hasMinTimeSeparation = (now - lastIntermediateSnapshotTimeMs) >= 20000L
+        // Find max speed in the last 5 seconds
+        val maxSpeedInWindow = speedHistoryList.maxOfOrNull { it.second } ?: speed
+        val speedDelta = maxSpeedInWindow - speed
+
+        // Significant speed drop: delta >= 15.0 km/h from a previously sustained speed of >= 20.0 km/h
+        val isSignificantDrop = speedDelta >= 15.0f && maxSpeedInWindow >= 20.0f
+        val hasMinTimeSeparation = (now - lastSpeedDropEventTimeMs) >= 10000L // 10-second debounce window
 
         if (isSignificantDrop && hasMinTimeSeparation && locationSnapshotProvider.isValidCoordinate(lat, lng)) {
+            lastSpeedDropEventTimeMs = now
             lastIntermediateSnapshotTimeMs = now
-            confirmedPreviousSpeedKmH = speed
 
             val curHead = currentHeadingDeg
             val prevHead = previousHeadingDeg
@@ -621,31 +703,8 @@ class MotionIntelligenceEngine(
                 abs(curHead - prevHead).let { if (it > 180f) 360f - it else it }
             } else null
 
-            val classification: RouteEventClassification
-            val confidence: MotionConfidence
-
-            when {
-                speed <= 2.0f -> {
-                    classification = RouteEventClassification.STOP_PAUSE
-                    confidence = MotionConfidence.HIGH
-                }
-                headingDiff != null && headingDiff >= 35.0f && speed >= 5.0f -> {
-                    classification = RouteEventClassification.TURN
-                    confidence = if (headingDiff >= 50.0f) MotionConfidence.HIGH else MotionConfidence.MEDIUM
-                }
-                headingDiff != null && headingDiff < 20.0f && speedDelta in 5.0f..18.0f -> {
-                    classification = RouteEventClassification.POSSIBLE_SPEED_BREAKER
-                    confidence = MotionConfidence.MEDIUM
-                }
-                headingDiff != null && headingDiff < 20.0f && speedDelta > 18.0f -> {
-                    classification = RouteEventClassification.SPEED_REDUCTION
-                    confidence = MotionConfidence.HIGH
-                }
-                else -> {
-                    classification = RouteEventClassification.SIGNIFICANT_SPEED_DROP
-                    confidence = MotionConfidence.MEDIUM
-                }
-            }
+            val classification = RouteEventClassification.SIGNIFICANT_SPEED_DROP
+            val confidence = MotionConfidence.HIGH
 
             val sId = activeSessionId ?: "session_${activeDateKey}_${now}"
             val record = RouteEventRecord(
@@ -655,7 +714,7 @@ class MotionIntelligenceEngine(
                 latitude = lat,
                 longitude = lng,
                 accuracyMeters = accuracy,
-                previousSpeedKmH = prevSpeed,
+                previousSpeedKmH = maxSpeedInWindow,
                 currentSpeedKmH = speed,
                 speedDeltaKmH = speedDelta,
                 headingBeforeDeg = prevHead,
@@ -670,6 +729,16 @@ class MotionIntelligenceEngine(
                 motionDao.insertRouteEvent(record.toEntity(activeDateKey))
                 updateDashboardState()
             }
+
+            // Trigger notification & voice/TTS announcements for Significant Speed Drop
+            val deltaStr = "%.1f km/h".format(speedDelta)
+            val maxStr = "%.1f km/h".format(maxSpeedInWindow)
+            val curStr = "%.1f km/h".format(speed)
+            dispatchMotionTransitionAlert(
+                title = "NETRA: Significant Speed Drop",
+                message = "Significant speed drop of $deltaStr detected (from $maxStr to $curStr) at location: %.5f, %.5f.".format(lat, lng),
+                ttsMessage = "Significant speed drop of %.0f kilometers per hour detected.".format(speedDelta)
+            )
         }
     }
 
@@ -951,7 +1020,9 @@ fun MotionRouteSessionEntity.toModel(events: List<RouteEventRecord>): MotionRout
             longitude = startLongitude,
             accuracyMeters = startAccuracyMeters,
             timestamp = startTimestamp ?: startTimeMs,
-            isStartingPoint = true
+            isStartingPoint = true,
+            source = startSource,
+            speedKmH = startSpeedKmH
         )
     } else null
 
@@ -961,7 +1032,9 @@ fun MotionRouteSessionEntity.toModel(events: List<RouteEventRecord>): MotionRout
             longitude = endLongitude,
             accuracyMeters = endAccuracyMeters,
             timestamp = endTimestamp ?: (endTimeMs ?: startTimeMs),
-            isEndingPoint = true
+            isEndingPoint = true,
+            source = endSource,
+            speedKmH = endSpeedKmH
         )
     } else null
 
@@ -976,7 +1049,10 @@ fun MotionRouteSessionEntity.toModel(events: List<RouteEventRecord>): MotionRout
         snapshotDistanceMeters = snapshotDistanceMeters,
         isCumulativeDistance = isCumulativeDistance,
         locationAccuracyMeters = endAccuracyMeters ?: startAccuracyMeters,
-        intermediateEvents = events
+        intermediateEvents = events,
+        averageSpeedKmH = averageSpeedKmH,
+        maxSpeedKmH = maxSpeedKmH,
+        eventCount = eventCount
     )
 }
 
@@ -997,6 +1073,13 @@ fun MotionRouteSession.toEntity(): MotionRouteSessionEntity {
         endTimestamp = endLocation?.timestamp,
         snapshotDistanceMeters = snapshotDistanceMeters,
         isCumulativeDistance = isCumulativeDistance,
+        startSource = startLocation?.source,
+        startSpeedKmH = startLocation?.speedKmH,
+        endSource = endLocation?.source,
+        endSpeedKmH = endLocation?.speedKmH,
+        averageSpeedKmH = averageSpeedKmH,
+        maxSpeedKmH = maxSpeedKmH,
+        eventCount = eventCount,
         lastUpdatedMs = System.currentTimeMillis()
     )
 }

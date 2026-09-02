@@ -61,7 +61,9 @@ class MotionLocationSnapshotProvider(private val context: Context) {
                     accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
                     timestamp = location.time.let { if (it > 0) it else System.currentTimeMillis() },
                     isStartingPoint = isStartingPoint,
-                    isEndingPoint = isEndingPoint
+                    isEndingPoint = isEndingPoint,
+                    source = location.provider ?: "fused",
+                    speedKmH = if (location.hasSpeed()) (location.speed * 3.6f) else null
                 )
             } else {
                 null
