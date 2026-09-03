@@ -216,25 +216,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val developerPinFailedAttempts: StateFlow<Int> = settingsRepository.developerPinFailedAttempts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val developerPinRecoveryKey: StateFlow<String?> = settingsRepository.developerPinRecoveryKey.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val userDobEpochMs: StateFlow<Long?> = settingsRepository.userDobEpochMs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val userHeightCm: StateFlow<Float?> = settingsRepository.userHeightCm.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val userHeightUnit: StateFlow<String> = settingsRepository.userHeightUnit.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "cm")
-    val userGender: StateFlow<String> = settingsRepository.userGender.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-    val customStepTarget: StateFlow<Int?> = settingsRepository.customStepTarget.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val customStandingTargetSec: StateFlow<Long?> = settingsRepository.customStandingTargetSec.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    fun saveUserProfile(dobEpochMs: Long?, heightCm: Float?, heightUnit: String, gender: String) {
-        viewModelScope.launch {
-            settingsRepository.saveUserProfile(dobEpochMs, heightCm, heightUnit, gender)
-        }
-    }
-
-    fun saveCustomTargets(stepTarget: Int?, standingTargetSec: Long?) {
-        viewModelScope.launch {
-            settingsRepository.saveCustomTargets(stepTarget, standingTargetSec)
-        }
-    }
-
     private val _privacyScannerState = MutableStateFlow(PrivacyScannerState())
     val privacyScannerState: StateFlow<PrivacyScannerState> = _privacyScannerState.asStateFlow()
 
@@ -1139,6 +1120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        stopLiveGraphSession()
         ttsManager.shutdown()
     }
 }

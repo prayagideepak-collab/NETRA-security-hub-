@@ -33,7 +33,7 @@ class LiveGraphScreenTest {
         }
 
         composeTestRule.onNodeWithText("WAITING").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Waiting for live sensor data").assertIsDisplayed()
+        composeTestRule.onNodeWithText("WAITING FOR RAW TELEMETRY DATA...").assertIsDisplayed()
     }
 
     @Test
@@ -41,7 +41,7 @@ class LiveGraphScreenTest {
         val reading = RawSensorReading(
             sensorId = "test",
             name = "Test Sensor",
-            category = SensorCategory.MOTION,
+            category = SensorCategory.THERMAL,
             values = floatArrayOf(9.82f, 0f, 0f),
             unit = "m/s²"
         )
@@ -56,8 +56,8 @@ class LiveGraphScreenTest {
         }
 
         composeTestRule.onNodeWithText("LIVE").assertIsDisplayed()
-        composeTestRule.onNodeWithText("TEST SENSOR").assertIsDisplayed()
-        composeTestRule.onNodeWithText("9.82").assertIsDisplayed()
+        composeTestRule.onNodeWithText("REGISTERED: TEST SENSOR").assertIsDisplayed()
+        composeTestRule.onNodeWithText("9.820").assertIsDisplayed()
     }
 
     @Test
@@ -65,7 +65,7 @@ class LiveGraphScreenTest {
         val reading = RawSensorReading(
             sensorId = "test",
             name = "Test Sensor",
-            category = SensorCategory.MOTION,
+            category = SensorCategory.THERMAL,
             values = floatArrayOf(9.82f),
             unit = "m/s²"
         )
@@ -80,6 +80,6 @@ class LiveGraphScreenTest {
         }
 
         composeTestRule.onNodeWithText("PAUSED").assertIsDisplayed()
-        composeTestRule.onNodeWithContentDescription("Resume graph").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Resume").assertIsDisplayed()
     }
 }

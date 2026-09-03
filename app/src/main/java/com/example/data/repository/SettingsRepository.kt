@@ -49,37 +49,6 @@ class SettingsRepository(private val context: Context) {
         val DEVELOPER_PIN_RECOVERY_KEY = stringPreferencesKey("developer_pin_recovery_key")
         val FAILED_LOGIN_TIMESTAMPS = stringPreferencesKey("failed_login_timestamps")
         val LOCKOUT_UNTIL_TIMESTAMP = longPreferencesKey("lockout_until_timestamp")
-
-        // User Profile & Activity Targets (True-Data Step 3)
-        val USER_DOB_EPOCH_MS = longPreferencesKey("user_dob_epoch_ms")
-        val USER_HEIGHT_CM = floatPreferencesKey("user_height_cm")
-        val USER_HEIGHT_UNIT = stringPreferencesKey("user_height_unit")
-        val USER_GENDER = stringPreferencesKey("user_gender")
-        val CUSTOM_STEP_TARGET = intPreferencesKey("custom_step_target")
-        val CUSTOM_STANDING_TARGET_SEC = longPreferencesKey("custom_standing_target_sec")
-    }
-
-    val userDobEpochMs: Flow<Long?> = context.dataStore.data.map { it[Keys.USER_DOB_EPOCH_MS] }
-    val userHeightCm: Flow<Float?> = context.dataStore.data.map { it[Keys.USER_HEIGHT_CM] }
-    val userHeightUnit: Flow<String> = context.dataStore.data.map { it[Keys.USER_HEIGHT_UNIT] ?: "cm" }
-    val userGender: Flow<String> = context.dataStore.data.map { it[Keys.USER_GENDER] ?: "" }
-    val customStepTarget: Flow<Int?> = context.dataStore.data.map { it[Keys.CUSTOM_STEP_TARGET] }
-    val customStandingTargetSec: Flow<Long?> = context.dataStore.data.map { it[Keys.CUSTOM_STANDING_TARGET_SEC] }
-
-    suspend fun saveUserProfile(dobEpochMs: Long?, heightCm: Float?, heightUnit: String, gender: String) {
-        context.dataStore.edit { preferences ->
-            if (dobEpochMs != null) preferences[Keys.USER_DOB_EPOCH_MS] = dobEpochMs else preferences.remove(Keys.USER_DOB_EPOCH_MS)
-            if (heightCm != null) preferences[Keys.USER_HEIGHT_CM] = heightCm else preferences.remove(Keys.USER_HEIGHT_CM)
-            preferences[Keys.USER_HEIGHT_UNIT] = heightUnit
-            preferences[Keys.USER_GENDER] = gender
-        }
-    }
-
-    suspend fun saveCustomTargets(stepTarget: Int?, standingTargetSec: Long?) {
-        context.dataStore.edit { preferences ->
-            if (stepTarget != null) preferences[Keys.CUSTOM_STEP_TARGET] = stepTarget else preferences.remove(Keys.CUSTOM_STEP_TARGET)
-            if (standingTargetSec != null) preferences[Keys.CUSTOM_STANDING_TARGET_SEC] = standingTargetSec else preferences.remove(Keys.CUSTOM_STANDING_TARGET_SEC)
-        }
     }
 
     val monitorThermal: Flow<Boolean> = context.dataStore.data.map { it[Keys.MONITOR_THERMAL] ?: true }

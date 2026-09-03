@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.audit.ServiceStateAuditDao
 import com.example.data.audit.ServiceStateAuditEntity
 import com.example.data.audit.UnifiedEventDao
@@ -43,13 +45,26 @@ abstract class NetraDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: NetraDatabase? = null
 
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Drop only the obsolete Motion-related tables intentionally removed in v18
+                db.execSQL("DROP TABLE IF EXISTS daily_motion_summary")
+                db.execSQL("DROP TABLE IF EXISTS motion_events")
+                db.execSQL("DROP TABLE IF EXISTS motion_route_sessions")
+                db.execSQL("DROP TABLE IF EXISTS route_events")
+            }
+        }
+
         fun getInstance(context: Context): NetraDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     NetraDatabase::class.java,
                     "netra_safety_db"
-                ).fallbackToDestructiveMigration().build()
+                )
+                .addMigrations(MIGRATION_17_18)
+                .fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+                .build()
                 INSTANCE = instance
                 instance
             }
