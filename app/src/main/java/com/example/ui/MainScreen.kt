@@ -194,7 +194,7 @@ fun MainScreen(
                                 letterSpacing = 1.5.sp
                             )
                             Text(
-                                text = "Netra Sensor Hub",
+                                text = "Netra Human Safety",
                                 color = BentoTextPrimary,
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
@@ -452,7 +452,8 @@ fun MainScreen(
 
 @Composable
 fun OfficialWarningHeaderBanner(warning: com.example.data.engine.OfficialWarningInfo) {
-    if (!warning.isAvailable) return
+    val isEligible = warning.isAvailable && warning.verificationStatus == "VERIFIED" && warning.locationRelevance == "VERIFIED_MATCH"
+    if (!isEligible) return
     val containerColor = when (warning.severity) {
         "CRITICAL" -> BentoRed.copy(alpha = 0.2f)
         "WARNING" -> BentoAmber.copy(alpha = 0.2f)

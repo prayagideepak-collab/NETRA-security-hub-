@@ -1,5 +1,5 @@
 {
-  "name": "Netra Security Hub",
+  "name": "Netra Human Safety",
   "description": "Comprehensive driving log engine, real-time sensor monitoring, pocket status, and safety events tracker.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

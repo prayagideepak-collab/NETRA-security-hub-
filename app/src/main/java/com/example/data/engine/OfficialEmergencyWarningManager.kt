@@ -20,7 +20,7 @@ import java.net.URL
 data class OfficialWarningInfo(
     val alertId: String = "",
     val warningType: String = "No Active Warning",
-    val severity: String = "INFO", // INFO, WATCH, WARNING, CRITICAL
+    val severity: String = "UNKNOWN", // INFO, WATCH, WARNING, CRITICAL, UNKNOWN
     val headline: String = "",
     val description: String = "",
     val startTime: String = "",
@@ -28,6 +28,9 @@ data class OfficialWarningInfo(
     val issuingAuthority: String = "Source unavailable",
     val sourceType: String = "THIRD_PARTY", // OFFICIAL_VERIFIED, THIRD_PARTY, UNVERIFIED
     val verificationStatus: String = "UNVERIFIED", // VERIFIED, UNVERIFIED
+    val locationRelevance: String = "UNKNOWN_RELEVANCE", // VERIFIED_MATCH, NO_MATCH, UNKNOWN_RELEVANCE
+    val lifecycleState: String = "INFORMATIONAL", // ACTIVE, UPDATED, EXPIRED, CANCELLED, INFORMATIONAL
+    val checkStatusState: String = "CHECK_SUCCESS_NO_ACTIVE_WARNING", // LOCATION_UNAVAILABLE, LOCATION_STALE, SOURCE_UNAVAILABLE, CHECK_FAILED, CHECK_SUCCESS_NO_ACTIVE_WARNING, VERIFIED_ACTIVE_WARNING, UNVERIFIED_INFORMATION
     val affectedArea: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val isAvailable: Boolean = false,
@@ -50,33 +53,84 @@ class OfficialEmergencyWarningManager(private val context: Context) {
     val checkStatus: StateFlow<String> = _checkStatus.asStateFlow()
 
     suspend fun checkOfficialWarnings(): OfficialWarningInfo = withContext(Dispatchers.IO) {
-        _checkStatus.value = "Checking Official Sources..."
+        _checkStatus.value = "Checking Warning Sources..."
         val loc = locationManager.refreshLocation()
         _lastCheckTimestamp.value = System.currentTimeMillis()
 
+        if (loc.locality == "Location Unavailable" || loc.latitude == 0.0) {
+            val stateInfo = OfficialWarningInfo(
+                warningType = "Location Unavailable",
+                headline = "Location unavailable for warning check",
+                checkStatusState = "LOCATION_UNAVAILABLE",
+                source = "System Location"
+            )
+            _activeWarning.value = stateInfo
+            _checkStatus.value = "Location unavailable"
+            return@withContext stateInfo
+        }
+
         try {
-            val warning = fetchAuthoritativeWarning(loc)
-            if (warning != null && warning.isAvailable) {
-                val matchesLocation = isLocationMatched(warning, loc)
-                if (matchesLocation) {
-                    processMatchedWarning(warning, loc)
-                    _activeWarning.value = warning
-                    _checkStatus.value = "Active Warning Detected"
-                    return@withContext warning
+            val warning = fetchWarning(loc)
+            if (warning == null) {
+                val stateInfo = OfficialWarningInfo(
+                    warningType = "Source Unavailable",
+                    headline = "Warning source unavailable",
+                    checkStatusState = "SOURCE_UNAVAILABLE",
+                    issuingAuthority = "Source unavailable"
+                )
+                _activeWarning.value = stateInfo
+                _checkStatus.value = "Warning source unavailable"
+                return@withContext stateInfo
+            }
+
+            if (warning.isAvailable) {
+                val relevance = determineLocationRelevance(warning, loc)
+                val updatedWarning = warning.copy(locationRelevance = relevance)
+
+                // STRICT ELIGIBILITY GATE:
+                // Only VERIFIED and locationRelevance == VERIFIED_MATCH can trigger emergency pipeline
+                val isEligible = (updatedWarning.verificationStatus == "VERIFIED" || updatedWarning.sourceType == "OFFICIAL_VERIFIED") &&
+                                 (updatedWarning.locationRelevance == "VERIFIED_MATCH") &&
+                                 updatedWarning.lifecycleState == "ACTIVE"
+
+                if (isEligible) {
+                    processVerifiedMatchedWarning(updatedWarning, loc)
+                    val finalState = updatedWarning.copy(checkStatusState = "VERIFIED_ACTIVE_WARNING")
+                    _activeWarning.value = finalState
+                    _checkStatus.value = "Active Verified Warning Detected"
+                    return@withContext finalState
+                } else {
+                    // Unverified or third-party data: stored only as informational, never official emergency
+                    val infoState = updatedWarning.copy(checkStatusState = "UNVERIFIED_INFORMATION")
+                    _activeWarning.value = infoState
+                    _checkStatus.value = "Unverified advisory (Not official warning)"
+                    return@withContext infoState
                 }
             }
 
-            _activeWarning.value = OfficialWarningInfo(isAvailable = false, warningType = "No Active Warning", headline = "No official warning for ${loc.locality}")
-            _checkStatus.value = "Checked - All Clear"
-            return@withContext _activeWarning.value
+            val clearState = OfficialWarningInfo(
+                isAvailable = false,
+                warningType = "No Active Warning",
+                headline = "No active verified warning for ${loc.locality}",
+                checkStatusState = "CHECK_SUCCESS_NO_ACTIVE_WARNING"
+            )
+            _activeWarning.value = clearState
+            _checkStatus.value = "Checked - No active warnings"
+            return@withContext clearState
         } catch (e: Exception) {
-            LoggingManager.critical("EmergencyWarning", "ALERT_CHECK_FAILURE", "Failed to check official warnings: ${e.message}", "Preserving status.")
-            _checkStatus.value = "Latest official alert check unavailable"
-            return@withContext _activeWarning.value
+            LoggingManager.critical("EmergencyWarning", "CHECK_FAILED", "Warning check failed: ${e.message}", "Preserving status.")
+            val failState = OfficialWarningInfo(
+                warningType = "Check Failed",
+                headline = "Latest warning check failed",
+                checkStatusState = "CHECK_FAILED"
+            )
+            _activeWarning.value = failState
+            _checkStatus.value = "Latest warning check failed"
+            return@withContext failState
         }
     }
 
-    private suspend fun fetchAuthoritativeWarning(loc: LocationContextInfo): OfficialWarningInfo? {
+    private suspend fun fetchWarning(loc: LocationContextInfo): OfficialWarningInfo? {
         try {
             val url = URL("https://api.weatherapi.com/v1/current.json?key=public&q=${loc.latitude},${loc.longitude}&aqi=no")
             val connection = url.openConnection() as HttpURLConnection
@@ -95,8 +149,8 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                         val sender = alert.optString("senderName", "").trim()
                         val authority = if (sender.isNotEmpty()) sender else "Source unavailable"
                         
-                        val event = alert.optString("event", "Severe Weather Advisory")
-                        val severityRaw = alert.optString("severity", "INFO")
+                        val event = alert.optString("event", "Weather Advisory")
+                        val severityRaw = alert.optString("severity", "UNKNOWN")
                         val mappedSeverity = mapSeverity(severityRaw, event)
 
                         return OfficialWarningInfo(
@@ -108,8 +162,11 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                             startTime = alert.optString("effective", ""),
                             endTime = alert.optString("expires", ""),
                             issuingAuthority = authority,
-                            sourceType = "THIRD_PARTY",
-                            verificationStatus = "UNVERIFIED",
+                            sourceType = "THIRD_PARTY", // Explicitly third-party
+                            verificationStatus = "UNVERIFIED", // Unverified
+                            locationRelevance = "UNKNOWN_RELEVANCE",
+                            lifecycleState = "INFORMATIONAL",
+                            checkStatusState = "UNVERIFIED_INFORMATION",
                             affectedArea = alert.optString("areaDesc", ""),
                             timestamp = System.currentTimeMillis(),
                             isAvailable = true,
@@ -117,9 +174,11 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                         )
                     }
                 }
+                // Successfully checked, no alerts
+                return OfficialWarningInfo(isAvailable = false)
             }
         } catch (e: Exception) {
-            LoggingManager.info("EmergencyWarning", "NETWORK_OFFLINE", "Official alert network check skipped: ${e.message}", "Offline mode.")
+            LoggingManager.info("EmergencyWarning", "NETWORK_OFFLINE", "Warning network check failed: ${e.message}", "Source unavailable.")
         }
         return null
     }
@@ -132,19 +191,19 @@ class OfficialEmergencyWarningManager(private val context: Context) {
             s.contains("WARNING") || s.contains("ORANGE") || e.contains("WARNING") -> "WARNING"
             s.contains("WATCH") || s.contains("YELLOW") || e.contains("WATCH") -> "WATCH"
             s.contains("INFO") || s.contains("ADVISORY") || e.contains("ADVISORY") -> "INFO"
-            else -> "INFO"
+            else -> "UNKNOWN" // Never default to INFO if unknown
         }
     }
 
-    private fun isLocationMatched(warning: OfficialWarningInfo, loc: LocationContextInfo): Boolean {
+    private fun determineLocationRelevance(warning: OfficialWarningInfo, loc: LocationContextInfo): String {
         val affected = warning.affectedArea.lowercase().trim()
         val locality = loc.locality.lowercase().trim()
         val district = loc.district.lowercase().trim()
         val state = loc.state.lowercase().trim()
 
-        // STRICT RULE: affectedArea.isEmpty() != location matched!
+        // STRICT RULE: affected.isEmpty() NEVER equals location match!
         if (affected.isEmpty()) {
-            return false
+            return "UNKNOWN_RELEVANCE"
         }
 
         val matchesCity = locality.isNotEmpty() && locality != "location unavailable" && affected.contains(locality)
@@ -152,10 +211,14 @@ class OfficialEmergencyWarningManager(private val context: Context) {
         val matchesState = state.isNotEmpty() && state != "location unavailable" && affected.contains(state) &&
             (affected.contains("state") || affected.contains("all") || affected.length < 100)
 
-        return matchesCity || matchesDistrict || matchesState
+        return if (matchesCity || matchesDistrict || matchesState) {
+            "VERIFIED_MATCH"
+        } else {
+            "NO_MATCH"
+        }
     }
 
-    private suspend fun processMatchedWarning(warning: OfficialWarningInfo, loc: LocationContextInfo) {
+    private suspend fun processVerifiedMatchedWarning(warning: OfficialWarningInfo, loc: LocationContextInfo) {
         val dao = db.safetyEventDao()
         val existing = dao.getEventByEventId(warning.alertId)
 
@@ -165,13 +228,17 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                 domain = "OFFICIAL_WARNING",
                 lifecycleState = "ACTIVE",
                 timestamp = warning.timestamp,
-                riskLevel = warning.severity,
+                riskLevel = when (warning.severity) {
+                    "CRITICAL" -> "EMERGENCY"
+                    "WARNING" -> "WARNING"
+                    else -> "ATTENTION"
+                },
                 riskScore = if (warning.severity == "CRITICAL") 90 else if (warning.severity == "WARNING") 75 else 50,
                 eventType = warning.warningType,
                 title = warning.warningType,
                 description = warning.headline,
                 aiRecommendation = "Source: ${warning.source} (${warning.issuingAuthority}). Valid: ${warning.startTime} to ${warning.endTime}.",
-                isVerifiedHardwareEvent = true,
+                isVerifiedHardwareEvent = false, // Never mark unverified/third-party as hardware event
                 moduleName = "OfficialEmergencyWarningManager",
                 severity = warning.severity,
                 gpsLocation = "${loc.locality}, ${loc.state} (${loc.source})"
@@ -192,7 +259,7 @@ class OfficialEmergencyWarningManager(private val context: Context) {
             val announcementText = "Safety alert. ${warning.warningType}. Severity ${warning.severity}. Valid from ${warning.startTime} to ${warning.endTime}. Issued by $authText."
             ttsManager.speakAlert(announcementText, isCriticalSafety = warning.severity == "CRITICAL" || warning.severity == "WARNING")
 
-            LoggingManager.critical("EmergencyWarning", "NEW_OFFICIAL_ALERT", "New official alert notified: ${warning.warningType}", "Severity: ${warning.severity}")
+            LoggingManager.critical("EmergencyWarning", "NEW_VERIFIED_ALERT", "New verified official alert notified: ${warning.warningType}", "Severity: ${warning.severity}")
         }
     }
 }
