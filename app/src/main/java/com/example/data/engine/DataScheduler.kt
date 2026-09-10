@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.work.*
 import java.util.concurrent.TimeUnit
 
-class DataScheduler(context: Context) {
+class DataScheduler(private val context: Context) {
     private val workManager = WorkManager.getInstance(context)
 
     // Priority Matrix:
@@ -29,6 +29,9 @@ class DataScheduler(context: Context) {
             ExistingPeriodicWorkPolicy.UPDATE,
             syncRequest
         )
+
+        // Schedule Official Local Emergency Warning Intelligence worker
+        OfficialWarningWorker.schedule(context)
     }
 
     fun triggerImmediateSync() {

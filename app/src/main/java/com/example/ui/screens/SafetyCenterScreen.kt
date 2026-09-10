@@ -57,6 +57,11 @@ fun SafetyCenterScreen(
             )
         }
 
+        // OFFICIAL SAFETY ALERT STATUS CARD
+        item {
+            OfficialSafetyAlertStatusCard(viewModel = viewModel)
+        }
+
         // 2. ACTIVE HAZARDS SECTION
         item {
             Text(
@@ -564,5 +569,102 @@ fun SafetyLogItemCard(log: SafetyEventEntity) {
                 )
             }
         }
+    }
+}
+
+@Composable
+fun OfficialSafetyAlertStatusCard(
+    viewModel: MainViewModel
+) {
+    val officialWarning by viewModel.officialWarningState.collectAsStateWithLifecycle()
+    val locationContext by viewModel.officialLocationState.collectAsStateWithLifecycle()
+    val lastCheck by viewModel.officialWarningLastCheck.collectAsStateWithLifecycle()
+    val checkStatus by viewModel.officialWarningCheckStatus.collectAsStateWithLifecycle()
+
+    val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.US) }
+    val lastUpdateStr = if (locationContext.timestamp > 0) dateFormat.format(Date(locationContext.timestamp)) else "Location Unavailable"
+    val lastCheckStr = if (lastCheck > 0) dateFormat.format(Date(lastCheck)) else "Never"
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("official_safety_alert_status_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = BentoCardBg),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(BentoGreenVibrant.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Verified,
+                            contentDescription = "Official Warning Status",
+                            tint = BentoGreenVibrant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Official Safety Alert Status",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = BentoTextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                IconButton(
+                    onClick = { viewModel.checkOfficialWarningsNow() },
+                    modifier = Modifier.size(32.dp).testTag("refresh_official_warning_button")
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Check Now",
+                        tint = BentoGreenPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = BentoBorder, thickness = 1.dp)
+
+            StatusRow("Current Location", "${locationContext.locality}, ${locationContext.state}")
+            StatusRow("Location Source", locationContext.source)
+            StatusRow("Last Successful Location Update", lastUpdateStr)
+            StatusRow("Last Official Alert Check", "$lastCheckStr ($checkStatus)")
+            StatusRow("Active Warning", if (officialWarning.isAvailable) officialWarning.warningType else "None / Unavailable")
+            StatusRow("Source", officialWarning.issuingAuthority)
+        }
+    }
+}
+
+@Composable
+fun StatusRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            color = BentoTextSecondary,
+            fontSize = 12.sp
+        )
+        Text(
+            text = value,
+            color = BentoTextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }

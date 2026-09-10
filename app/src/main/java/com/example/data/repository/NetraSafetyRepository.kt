@@ -38,6 +38,13 @@ class NetraSafetyRepository(private val context: Context) {
     val safetyEngine = com.example.data.engine.NetraSafetyEngine(context)
     val safetyEngineState = safetyEngine.safetyEngineState
     val alertManager = safetyEngine.alertManager
+
+    val officialWarningManager = com.example.data.engine.OfficialEmergencyWarningManager(context)
+    val officialLocationManager = com.example.data.service.OfficialLocationContextManager(context)
+    val officialWarningState = officialWarningManager.activeWarning
+    val officialLocationState = officialLocationManager.locationContext
+    val officialWarningLastCheck = officialWarningManager.lastCheckTimestamp
+    val officialWarningCheckStatus = officialWarningManager.checkStatus
     
     // Inject CanonicalEventManager lazily
     val eventManager by lazy { com.example.data.event.CanonicalEventManager(sensorManager.stateManager) }

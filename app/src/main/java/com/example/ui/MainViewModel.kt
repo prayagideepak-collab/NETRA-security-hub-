@@ -111,9 +111,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val safetyEngineState: StateFlow<com.example.data.model.SafetyEngineState> = repository.safetyEngineState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.data.model.SafetyEngineState())
 
+    val officialWarningState = repository.officialWarningState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.data.engine.OfficialWarningInfo())
+    val officialLocationState = repository.officialLocationState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.data.service.LocationContextInfo())
+    val officialWarningLastCheck = repository.officialWarningLastCheck
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    val officialWarningCheckStatus = repository.officialWarningCheckStatus
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Idle")
+
     fun evaluateSafetyConditions() {
         viewModelScope.launch {
             repository.evaluateAiRisk()
+        }
+    }
+
+    fun checkOfficialWarningsNow() {
+        viewModelScope.launch {
+            repository.officialWarningManager.checkOfficialWarnings()
         }
     }
 
