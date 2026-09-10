@@ -452,7 +452,7 @@ fun MainScreen(
 
 @Composable
 fun OfficialWarningHeaderBanner(warning: com.example.data.engine.OfficialWarningInfo) {
-    val isEligible = warning.isAvailable && warning.verificationStatus == "VERIFIED" && warning.locationRelevance == "VERIFIED_MATCH"
+    val isEligible = warning.isAvailable && warning.locationRelevance == "VERIFIED_MATCH" && warning.lifecycleState == "ACTIVE"
     if (!isEligible) return
     val containerColor = when (warning.severity) {
         "CRITICAL" -> BentoRed.copy(alpha = 0.2f)
@@ -481,7 +481,7 @@ fun OfficialWarningHeaderBanner(warning: com.example.data.engine.OfficialWarning
         ) {
             Icon(
                 imageVector = Icons.Default.Warning,
-                contentDescription = "Official Warning",
+                contentDescription = "Active Warning",
                 tint = borderColor,
                 modifier = Modifier.size(24.dp)
             )
@@ -501,7 +501,7 @@ fun OfficialWarningHeaderBanner(warning: com.example.data.engine.OfficialWarning
                     )
                 }
                 Text(
-                    text = "Valid: ${warning.startTime} – ${warning.endTime} | Authority: ${warning.issuingAuthority}",
+                    text = "Valid: ${warning.startTime} – ${warning.endTime} | Source: ${warning.source}",
                     color = BentoTextMuted,
                     fontSize = 10.sp
                 )

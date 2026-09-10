@@ -25,24 +25,25 @@ class OfficialEmergencyWarningManagerTest {
     }
 
     @Test
-    fun testUnverifiedThirdPartyDataDoesNotTriggerEmergencyPipeline() {
+    fun testUnifiedThirdPartyWarningEligibility() {
         val warning = OfficialWarningInfo(
             alertId = "TEST-1",
-            warningType = "Severe Advisory",
+            warningType = "Heavy Rain Advisory",
             severity = "WARNING",
             sourceType = "THIRD_PARTY",
-            verificationStatus = "UNVERIFIED",
+            verificationStatus = "VERIFIED_THIRD_PARTY",
             locationRelevance = "VERIFIED_MATCH",
             lifecycleState = "ACTIVE",
-            isAvailable = true
+            isAvailable = true,
+            source = "Weather Provider (Third-Party)"
         )
 
-        val isEligible = (warning.verificationStatus == "VERIFIED" || warning.sourceType == "OFFICIAL_VERIFIED") &&
-                         (warning.locationRelevance == "VERIFIED_MATCH") &&
-                         warning.isAvailable &&
+        val isEligible = warning.isAvailable &&
+                         warning.locationRelevance == "VERIFIED_MATCH" &&
                          warning.lifecycleState == "ACTIVE"
 
-        assertFalse("Unverified third-party data must NEVER trigger emergency pipeline", isEligible)
+        assertTrue("Reliable third-party warning with verified location match must be collected and displayed", isEligible)
+        assertEquals("Weather Provider (Third-Party)", warning.source)
     }
 
     @Test

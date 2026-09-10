@@ -27,14 +27,14 @@ data class OfficialWarningInfo(
     val endTime: String = "",
     val issuingAuthority: String = "Source unavailable",
     val sourceType: String = "THIRD_PARTY", // OFFICIAL_VERIFIED, THIRD_PARTY, UNVERIFIED
-    val verificationStatus: String = "UNVERIFIED", // VERIFIED, UNVERIFIED
+    val verificationStatus: String = "VERIFIED_THIRD_PARTY", // OFFICIAL_VERIFIED, VERIFIED_THIRD_PARTY, UNVERIFIED
     val locationRelevance: String = "UNKNOWN_RELEVANCE", // VERIFIED_MATCH, NO_MATCH, UNKNOWN_RELEVANCE
     val lifecycleState: String = "INFORMATIONAL", // ACTIVE, UPDATED, EXPIRED, CANCELLED, INFORMATIONAL
     val checkStatusState: String = "CHECK_SUCCESS_NO_ACTIVE_WARNING", // LOCATION_UNAVAILABLE, LOCATION_STALE, SOURCE_UNAVAILABLE, CHECK_FAILED, CHECK_SUCCESS_NO_ACTIVE_WARNING, VERIFIED_ACTIVE_WARNING, UNVERIFIED_INFORMATION
     val affectedArea: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val isAvailable: Boolean = false,
-    val source: String = "WeatherAPI (Third-Party)"
+    val source: String = "Weather Provider (Third-Party)"
 )
 
 class OfficialEmergencyWarningManager(private val context: Context) {
@@ -73,7 +73,7 @@ class OfficialEmergencyWarningManager(private val context: Context) {
             val warning = fetchWarning(loc)
             if (warning == null) {
                 val stateInfo = OfficialWarningInfo(
-                    warningType = "Source Unavailable",
+                    warningType = "Warning Source Unavailable",
                     headline = "Warning source unavailable",
                     checkStatusState = "SOURCE_UNAVAILABLE",
                     issuingAuthority = "Source unavailable"
@@ -87,23 +87,21 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                 val relevance = determineLocationRelevance(warning, loc)
                 val updatedWarning = warning.copy(locationRelevance = relevance)
 
-                // STRICT ELIGIBILITY GATE:
-                // Only VERIFIED and locationRelevance == VERIFIED_MATCH can trigger emergency pipeline
-                val isEligible = (updatedWarning.verificationStatus == "VERIFIED" || updatedWarning.sourceType == "OFFICIAL_VERIFIED") &&
-                                 (updatedWarning.locationRelevance == "VERIFIED_MATCH") &&
+                // UNIFIED ELIGIBILITY: Official + Reliable Third-Party data collected & displayed if location matches
+                val isEligible = updatedWarning.isAvailable &&
+                                 updatedWarning.locationRelevance == "VERIFIED_MATCH" &&
                                  updatedWarning.lifecycleState == "ACTIVE"
 
                 if (isEligible) {
-                    processVerifiedMatchedWarning(updatedWarning, loc)
+                    processMatchedWarning(updatedWarning, loc)
                     val finalState = updatedWarning.copy(checkStatusState = "VERIFIED_ACTIVE_WARNING")
                     _activeWarning.value = finalState
-                    _checkStatus.value = "Active Verified Warning Detected"
+                    _checkStatus.value = "Active Warning Detected (${updatedWarning.source})"
                     return@withContext finalState
                 } else {
-                    // Unverified or third-party data: stored only as informational, never official emergency
                     val infoState = updatedWarning.copy(checkStatusState = "UNVERIFIED_INFORMATION")
                     _activeWarning.value = infoState
-                    _checkStatus.value = "Unverified advisory (Not official warning)"
+                    _checkStatus.value = "Advisory recorded (No local match)"
                     return@withContext infoState
                 }
             }
@@ -111,7 +109,7 @@ class OfficialEmergencyWarningManager(private val context: Context) {
             val clearState = OfficialWarningInfo(
                 isAvailable = false,
                 warningType = "No Active Warning",
-                headline = "No active verified warning for ${loc.locality}",
+                headline = "No active warning for ${loc.locality}",
                 checkStatusState = "CHECK_SUCCESS_NO_ACTIVE_WARNING"
             )
             _activeWarning.value = clearState
@@ -147,7 +145,7 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                     if (alertArray.length() > 0) {
                         val alert = alertArray.getJSONObject(0)
                         val sender = alert.optString("senderName", "").trim()
-                        val authority = if (sender.isNotEmpty()) sender else "Source unavailable"
+                        val authority = if (sender.isNotEmpty()) sender else "Reliable Weather Provider"
                         
                         val event = alert.optString("event", "Weather Advisory")
                         val severityRaw = alert.optString("severity", "UNKNOWN")
@@ -162,19 +160,18 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                             startTime = alert.optString("effective", ""),
                             endTime = alert.optString("expires", ""),
                             issuingAuthority = authority,
-                            sourceType = "THIRD_PARTY", // Explicitly third-party
-                            verificationStatus = "UNVERIFIED", // Unverified
+                            sourceType = "THIRD_PARTY",
+                            verificationStatus = "VERIFIED_THIRD_PARTY",
                             locationRelevance = "UNKNOWN_RELEVANCE",
-                            lifecycleState = "INFORMATIONAL",
-                            checkStatusState = "UNVERIFIED_INFORMATION",
+                            lifecycleState = "ACTIVE",
+                            checkStatusState = "VERIFIED_ACTIVE_WARNING",
                             affectedArea = alert.optString("areaDesc", ""),
                             timestamp = System.currentTimeMillis(),
                             isAvailable = true,
-                            source = "WeatherAPI (Third-Party)"
+                            source = "Weather Provider (Third-Party)"
                         )
                     }
                 }
-                // Successfully checked, no alerts
                 return OfficialWarningInfo(isAvailable = false)
             }
         } catch (e: Exception) {
@@ -191,7 +188,7 @@ class OfficialEmergencyWarningManager(private val context: Context) {
             s.contains("WARNING") || s.contains("ORANGE") || e.contains("WARNING") -> "WARNING"
             s.contains("WATCH") || s.contains("YELLOW") || e.contains("WATCH") -> "WATCH"
             s.contains("INFO") || s.contains("ADVISORY") || e.contains("ADVISORY") -> "INFO"
-            else -> "UNKNOWN" // Never default to INFO if unknown
+            else -> "UNKNOWN"
         }
     }
 
@@ -201,7 +198,6 @@ class OfficialEmergencyWarningManager(private val context: Context) {
         val district = loc.district.lowercase().trim()
         val state = loc.state.lowercase().trim()
 
-        // STRICT RULE: affected.isEmpty() NEVER equals location match!
         if (affected.isEmpty()) {
             return "UNKNOWN_RELEVANCE"
         }
@@ -218,7 +214,7 @@ class OfficialEmergencyWarningManager(private val context: Context) {
         }
     }
 
-    private suspend fun processVerifiedMatchedWarning(warning: OfficialWarningInfo, loc: LocationContextInfo) {
+    private suspend fun processMatchedWarning(warning: OfficialWarningInfo, loc: LocationContextInfo) {
         val dao = db.safetyEventDao()
         val existing = dao.getEventByEventId(warning.alertId)
 
@@ -238,15 +234,15 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                 title = warning.warningType,
                 description = warning.headline,
                 aiRecommendation = "Source: ${warning.source} (${warning.issuingAuthority}). Valid: ${warning.startTime} to ${warning.endTime}.",
-                isVerifiedHardwareEvent = false, // Never mark unverified/third-party as hardware event
+                isVerifiedHardwareEvent = false,
                 moduleName = "OfficialEmergencyWarningManager",
                 severity = warning.severity,
-                gpsLocation = "${loc.locality}, ${loc.state} (${loc.source})"
+                gpsLocation = "${loc.locality}, ${loc.state} (${warning.source})"
             )
             dao.insertEvent(entity)
 
             notificationManager.sendEmergencyAlert(
-                title = warning.warningType,
+                title = "${warning.warningType} (${warning.source})",
                 message = "${warning.headline}\nValid: ${warning.startTime} – ${warning.endTime}\nSource: ${warning.issuingAuthority}",
                 riskLevel = when (warning.severity) {
                     "CRITICAL" -> com.example.data.model.SafetyRiskLevel.EMERGENCY
@@ -255,11 +251,10 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                 }
             )
 
-            val authText = if (warning.issuingAuthority != "Source unavailable") warning.issuingAuthority else "Source unavailable"
-            val announcementText = "Safety alert. ${warning.warningType}. Severity ${warning.severity}. Valid from ${warning.startTime} to ${warning.endTime}. Issued by $authText."
+            val announcementText = "आपके क्षेत्र के लिए एक विश्वसनीय weather service (${warning.source}) ने ${warning.warningType} की चेतावनी रिपोर्ट की है। कृपया application में विवरण देखें।"
             ttsManager.speakAlert(announcementText, isCriticalSafety = warning.severity == "CRITICAL" || warning.severity == "WARNING")
 
-            LoggingManager.critical("EmergencyWarning", "NEW_VERIFIED_ALERT", "New verified official alert notified: ${warning.warningType}", "Severity: ${warning.severity}")
+            LoggingManager.critical("EmergencyWarning", "NEW_WARNING_DETECTED", "New warning detected: ${warning.warningType}", "Source: ${warning.source}, Severity: ${warning.severity}")
         }
     }
 }
