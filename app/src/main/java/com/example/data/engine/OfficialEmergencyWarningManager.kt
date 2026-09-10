@@ -21,15 +21,17 @@ data class OfficialWarningInfo(
     val alertId: String = "",
     val warningType: String = "No Active Warning",
     val severity: String = "INFO", // INFO, WATCH, WARNING, CRITICAL
-    val headline: String = "No official warning",
+    val headline: String = "",
     val description: String = "",
-    val startTime: String = "उपलब्ध नहीं",
-    val endTime: String = "उपलब्ध नहीं",
-    val issuingAuthority: String = "उपलब्ध नहीं",
+    val startTime: String = "",
+    val endTime: String = "",
+    val issuingAuthority: String = "Source unavailable",
+    val sourceType: String = "THIRD_PARTY", // OFFICIAL_VERIFIED, THIRD_PARTY, UNVERIFIED
+    val verificationStatus: String = "UNVERIFIED", // VERIFIED, UNVERIFIED
     val affectedArea: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val isAvailable: Boolean = false,
-    val source: String = "Official Disaster Management / IMD"
+    val source: String = "WeatherAPI (Third-Party)"
 )
 
 class OfficialEmergencyWarningManager(private val context: Context) {
@@ -90,18 +92,28 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                     val alertArray = alertsObj.getJSONArray("alert")
                     if (alertArray.length() > 0) {
                         val alert = alertArray.getJSONObject(0)
+                        val sender = alert.optString("senderName", "").trim()
+                        val authority = if (sender.isNotEmpty()) sender else "Source unavailable"
+                        
+                        val event = alert.optString("event", "Severe Weather Advisory")
+                        val severityRaw = alert.optString("severity", "INFO")
+                        val mappedSeverity = mapSeverity(severityRaw, event)
+
                         return OfficialWarningInfo(
                             alertId = alert.optString("id", "WARN-${System.currentTimeMillis()}"),
-                            warningType = alert.optString("event", "Severe Weather Warning"),
-                            severity = "WARNING",
-                            headline = alert.optString("headline", "Severe weather advisory issued"),
+                            warningType = event,
+                            severity = mappedSeverity,
+                            headline = alert.optString("headline", "Weather advisory issued"),
                             description = alert.optString("desc", ""),
-                            startTime = alert.optString("effective", "उपलब्ध नहीं"),
-                            endTime = alert.optString("expires", "उपलब्ध नहीं"),
-                            issuingAuthority = alert.optString("senderName", "India Meteorological Department / NDMA"),
-                            affectedArea = alert.optString("areaDesc", loc.locality),
+                            startTime = alert.optString("effective", ""),
+                            endTime = alert.optString("expires", ""),
+                            issuingAuthority = authority,
+                            sourceType = "THIRD_PARTY",
+                            verificationStatus = "UNVERIFIED",
+                            affectedArea = alert.optString("areaDesc", ""),
                             timestamp = System.currentTimeMillis(),
-                            isAvailable = true
+                            isAvailable = true,
+                            source = "WeatherAPI (Third-Party)"
                         )
                     }
                 }
@@ -112,13 +124,35 @@ class OfficialEmergencyWarningManager(private val context: Context) {
         return null
     }
 
-    private fun isLocationMatched(warning: OfficialWarningInfo, loc: LocationContextInfo): Boolean {
-        val affected = warning.affectedArea.lowercase()
-        val locality = loc.locality.lowercase()
-        val district = loc.district.lowercase()
-        val state = loc.state.lowercase()
+    private fun mapSeverity(severityStr: String, eventStr: String): String {
+        val s = severityStr.uppercase()
+        val e = eventStr.uppercase()
+        return when {
+            s.contains("CRITICAL") || s.contains("SEVERE") || e.contains("EXTREME") || e.contains("RED") -> "CRITICAL"
+            s.contains("WARNING") || s.contains("ORANGE") || e.contains("WARNING") -> "WARNING"
+            s.contains("WATCH") || s.contains("YELLOW") || e.contains("WATCH") -> "WATCH"
+            s.contains("INFO") || s.contains("ADVISORY") || e.contains("ADVISORY") -> "INFO"
+            else -> "INFO"
+        }
+    }
 
-        return affected.contains(locality) || affected.contains(district) || affected.contains(state) || affected.isEmpty()
+    private fun isLocationMatched(warning: OfficialWarningInfo, loc: LocationContextInfo): Boolean {
+        val affected = warning.affectedArea.lowercase().trim()
+        val locality = loc.locality.lowercase().trim()
+        val district = loc.district.lowercase().trim()
+        val state = loc.state.lowercase().trim()
+
+        // STRICT RULE: affectedArea.isEmpty() != location matched!
+        if (affected.isEmpty()) {
+            return false
+        }
+
+        val matchesCity = locality.isNotEmpty() && locality != "location unavailable" && affected.contains(locality)
+        val matchesDistrict = district.isNotEmpty() && district != "location unavailable" && affected.contains(district)
+        val matchesState = state.isNotEmpty() && state != "location unavailable" && affected.contains(state) &&
+            (affected.contains("state") || affected.contains("all") || affected.length < 100)
+
+        return matchesCity || matchesDistrict || matchesState
     }
 
     private suspend fun processMatchedWarning(warning: OfficialWarningInfo, loc: LocationContextInfo) {
@@ -132,11 +166,11 @@ class OfficialEmergencyWarningManager(private val context: Context) {
                 lifecycleState = "ACTIVE",
                 timestamp = warning.timestamp,
                 riskLevel = warning.severity,
-                riskScore = 80,
+                riskScore = if (warning.severity == "CRITICAL") 90 else if (warning.severity == "WARNING") 75 else 50,
                 eventType = warning.warningType,
                 title = warning.warningType,
                 description = warning.headline,
-                aiRecommendation = "Issued by ${warning.issuingAuthority}. Valid from ${warning.startTime} to ${warning.endTime}.",
+                aiRecommendation = "Source: ${warning.source} (${warning.issuingAuthority}). Valid: ${warning.startTime} to ${warning.endTime}.",
                 isVerifiedHardwareEvent = true,
                 moduleName = "OfficialEmergencyWarningManager",
                 severity = warning.severity,
@@ -146,12 +180,17 @@ class OfficialEmergencyWarningManager(private val context: Context) {
 
             notificationManager.sendEmergencyAlert(
                 title = warning.warningType,
-                message = "${warning.headline}\nTime: ${warning.startTime} – ${warning.endTime}\nIssued by: ${warning.issuingAuthority}",
-                riskLevel = com.example.data.model.SafetyRiskLevel.WARNING
+                message = "${warning.headline}\nValid: ${warning.startTime} – ${warning.endTime}\nSource: ${warning.issuingAuthority}",
+                riskLevel = when (warning.severity) {
+                    "CRITICAL" -> com.example.data.model.SafetyRiskLevel.EMERGENCY
+                    "WARNING" -> com.example.data.model.SafetyRiskLevel.WARNING
+                    else -> com.example.data.model.SafetyRiskLevel.ATTENTION
+                }
             )
 
-            val announcementText = "सावधान। ${warning.warningType}. ${warning.severity} चेतावनी जारी की गई है। समय: ${warning.startTime} से ${warning.endTime} तक। जारीकर्ता: ${warning.issuingAuthority}।"
-            ttsManager.speakAlert(announcementText, isCriticalSafety = true)
+            val authText = if (warning.issuingAuthority != "Source unavailable") warning.issuingAuthority else "Source unavailable"
+            val announcementText = "Safety alert. ${warning.warningType}. Severity ${warning.severity}. Valid from ${warning.startTime} to ${warning.endTime}. Issued by $authText."
+            ttsManager.speakAlert(announcementText, isCriticalSafety = warning.severity == "CRITICAL" || warning.severity == "WARNING")
 
             LoggingManager.critical("EmergencyWarning", "NEW_OFFICIAL_ALERT", "New official alert notified: ${warning.warningType}", "Severity: ${warning.severity}")
         }

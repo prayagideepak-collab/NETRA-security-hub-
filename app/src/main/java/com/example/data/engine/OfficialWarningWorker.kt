@@ -21,9 +21,9 @@ class OfficialWarningWorker(context: Context, params: WorkerParameters) : Corout
     companion object {
         fun schedule(context: Context) {
             val workManager = WorkManager.getInstance(context)
+            // Low battery must not completely disable essential safety intelligence; battery-not-low constraint removed.
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
-                .setRequiresBatteryNotLow(true)
                 .build()
 
             val request = PeriodicWorkRequestBuilder<OfficialWarningWorker>(15, TimeUnit.MINUTES)

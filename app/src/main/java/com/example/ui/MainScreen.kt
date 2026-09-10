@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.DirectionsWalk // Let me try this.
 
 import android.content.Intent
@@ -81,6 +82,7 @@ import com.example.ui.theme.BentoTextMuted
 import com.example.ui.theme.BentoTextPrimary
 import com.example.ui.theme.BentoTextSecondary
 import com.example.ui.theme.BentoRed
+import com.example.ui.theme.BentoAmber
 
 enum class NavigationTab(val title: String, val icon: ImageVector) {
     DASHBOARD("Dashboard", Icons.Default.Dashboard),
@@ -172,6 +174,7 @@ fun MainScreen(
     }
 
     val persistentAlert by SensorEventBus.persistentAlert.collectAsStateWithLifecycle()
+    val officialWarning by viewModel.officialWarningState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -316,6 +319,7 @@ fun MainScreen(
                     }
                 }
             }
+            OfficialWarningHeaderBanner(officialWarning)
             GeminiSummaryCard(viewModel)
             if (showPinChangeScreen) {
                 PinChangeScreen(
@@ -441,6 +445,65 @@ fun MainScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun OfficialWarningHeaderBanner(warning: com.example.data.engine.OfficialWarningInfo) {
+    if (!warning.isAvailable) return
+    val containerColor = when (warning.severity) {
+        "CRITICAL" -> BentoRed.copy(alpha = 0.2f)
+        "WARNING" -> BentoAmber.copy(alpha = 0.2f)
+        else -> BentoCardBg
+    }
+    val borderColor = when (warning.severity) {
+        "CRITICAL" -> BentoRed
+        "WARNING" -> BentoAmber
+        else -> BentoBorder
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("official_warning_header_banner"),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = "Official Warning",
+                tint = borderColor,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${warning.severity} ALERT: ${warning.warningType}",
+                    color = BentoTextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (warning.headline.isNotEmpty()) {
+                    Text(
+                        text = warning.headline,
+                        color = BentoTextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+                Text(
+                    text = "Valid: ${warning.startTime} – ${warning.endTime} | Authority: ${warning.issuingAuthority}",
+                    color = BentoTextMuted,
+                    fontSize = 10.sp
+                )
             }
         }
     }
