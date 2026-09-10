@@ -59,6 +59,17 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  ksp {
+    arg("room.schemaLocation", file("schemas").absolutePath)
+  }
+  sourceSets {
+    getByName("test") {
+      assets.srcDir(file("schemas"))
+    }
+    getByName("debug") {
+      assets.srcDir(file("schemas"))
+    }
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files

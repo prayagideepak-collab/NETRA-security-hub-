@@ -32,7 +32,7 @@ import com.example.nasre.db.RootCauseEntity
         RootCauseEntity::class
     ], 
     version = 18, 
-    exportSchema = false
+    exportSchema = true
 )
 abstract class NetraDatabase : RoomDatabase() {
     abstract fun safetyEventDao(): SafetyEventDao
