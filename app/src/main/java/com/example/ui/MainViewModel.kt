@@ -120,6 +120,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val officialWarningCheckStatus = repository.officialWarningCheckStatus
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Idle")
 
+    val isLiteMode: StateFlow<Boolean> = fusionState.map { state ->
+        (state.batteryLevelPercent > 0 && state.batteryLevelPercent < 15) || state.batteryTempC > 42.0f
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun evaluateSafetyConditions() {
         viewModelScope.launch {
             repository.evaluateAiRisk()

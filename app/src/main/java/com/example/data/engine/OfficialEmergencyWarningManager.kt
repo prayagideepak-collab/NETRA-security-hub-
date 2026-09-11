@@ -53,11 +53,22 @@ class OfficialEmergencyWarningManager(private val context: Context) {
     val checkStatus: StateFlow<String> = _checkStatus.asStateFlow()
 
     suspend fun checkOfficialWarnings(): OfficialWarningInfo = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        // 30-minute TTL cache check for ultra-low battery / network conservation
+        if (now - _lastCheckTimestamp.value < 30 * 60 * 1000L && _activeWarning.value.checkStatusState.isNotEmpty() && _activeWarning.value.checkStatusState != "Idle") {
+            return@withContext _activeWarning.value
+        }
+
         _checkStatus.value = "Checking Warning Sources..."
         val loc = locationManager.refreshLocation()
-        _lastCheckTimestamp.value = System.currentTimeMillis()
+        _lastCheckTimestamp.value = now
 
-        if (loc.locality == "Location Unavailable" || loc.latitude == 0.0) {
+        val hasValidCoords = loc.latitude in -90.0..90.0 && loc.longitude in -180.0..180.0 &&
+                             loc.locationStatus != "LOCATION_UNAVAILABLE" &&
+                             loc.locationStatus != "PERMISSION_NOT_GRANTED" &&
+                             loc.locationStatus != "PROVIDER_DISABLED"
+
+        if (!hasValidCoords) {
             val stateInfo = OfficialWarningInfo(
                 warningType = "Location Unavailable",
                 headline = "Location unavailable for warning check",
@@ -206,8 +217,9 @@ class OfficialEmergencyWarningManager(private val context: Context) {
         val matchesDistrict = district.isNotEmpty() && district != "location unavailable" && affected.contains(district)
         val matchesState = state.isNotEmpty() && state != "location unavailable" && affected.contains(state) &&
             (affected.contains("state") || affected.contains("all") || affected.length < 100)
+        val matchesCoordsFallback = loc.locationStatus == "COORDINATES_AVAILABLE" && (affected.contains("country") || affected.contains("national") || affected.contains("region") || affected.isEmpty() || affected.contains("all"))
 
-        return if (matchesCity || matchesDistrict || matchesState) {
+        return if (matchesCity || matchesDistrict || matchesState || matchesCoordsFallback) {
             "VERIFIED_MATCH"
         } else {
             "NO_MATCH"

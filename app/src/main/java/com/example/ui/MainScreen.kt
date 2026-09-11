@@ -67,6 +67,8 @@ import com.example.ui.screens.SensorCenterContainerScreen
 import com.example.ui.screens.HistoryLogsContainerScreen
 import com.example.ui.screens.ServiceManagerContainerScreen
 import com.example.ui.screens.SettingsContainerScreen
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.example.ui.screens.LiveGraphScreen
 import com.example.ui.screens.PinChangeScreen
 import com.example.ui.screens.SystemAuditScreen
@@ -175,6 +177,7 @@ fun MainScreen(
 
     val persistentAlert by SensorEventBus.persistentAlert.collectAsStateWithLifecycle()
     val officialWarning by viewModel.officialWarningState.collectAsStateWithLifecycle()
+    val isLiteMode by viewModel.isLiteMode.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -187,8 +190,8 @@ fun MainScreen(
                     ) {
                         Column {
                             Text(
-                                text = "SYSTEM ENGINE",
-                                color = BentoTextSecondary,
+                                text = if (isLiteMode) "SYSTEM ENGINE (LITE MODE)" else "SYSTEM ENGINE",
+                                color = if (isLiteMode) BentoAmber else BentoTextSecondary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.5.sp
@@ -208,6 +211,21 @@ fun MainScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(end = 12.dp)
                     ) {
+                        if (isLiteMode) {
+                            Surface(
+                                color = BentoAmber.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text(
+                                    text = "⚡ LITE",
+                                    color = BentoAmber,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         // Glowing Green Dot Indicator
                         Box(
                             modifier = Modifier
